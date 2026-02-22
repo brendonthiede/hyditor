@@ -1,0 +1,9 @@
+{
+  "identifier": "default",
+  "description": "Default capability for Hyditor",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "stronghold:default"
+  ]
+}
