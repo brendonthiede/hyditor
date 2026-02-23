@@ -147,38 +147,37 @@ pub fn set_token(app: &AppHandle, token: StoredToken) -> Result<(), String> {
     set_token_with_paths(&paths, token)
 }
 
-#[tauri::command]
-pub async fn get_token(app: AppHandle) -> Result<Option<String>, String> {
-    let token = get_stored_token(&app)?;
-    
-    if let Some(stored) = token {
-        // Check if token is expired or will expire in the next 60 seconds
-        if let Some(expires_at) = stored.expires_at {
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_err(|_| "failed to get current time".to_string())?
-                .as_secs() as i64;
-            
-            // If token expires within 60 seconds, try to refresh
-            if expires_at - now < 60 {
-                if let Some(refresh_token) = stored.refresh_token {
-                    // Try to refresh the token
-                    match crate::auth::device_flow::refresh_access_token(&app, &refresh_token).await {
-                        Ok(new_token) => return Ok(Some(new_token.access_token)),
-                        Err(_) => {
-                            // If refresh fails, return the existing token anyway
-                            // (it might still work for a few more seconds)
-                            return Ok(Some(stored.access_token));
-                        }
-                    }
+pub async fn get_access_token(app: &AppHandle) -> Result<String, String> {
+    let Some(stored) = get_stored_token(app)? else {
+        return Err("Not authenticated. Sign in with GitHub first.".to_string());
+    };
+
+    if let Some(expires_at) = stored.expires_at {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| "failed to get current time".to_string())?
+            .as_secs() as i64;
+
+        if expires_at - now < 60 {
+            if let Some(refresh_token) = stored.refresh_token.clone() {
+                match crate::auth::device_flow::refresh_access_token(app, &refresh_token).await {
+                    Ok(new_token) => return Ok(new_token.access_token),
+                    Err(_) => return Ok(stored.access_token),
                 }
             }
         }
-        
-        Ok(Some(stored.access_token))
-    } else {
-        Ok(None)
     }
+
+    Ok(stored.access_token)
+}
+
+#[tauri::command]
+pub async fn get_token(app: AppHandle) -> Result<Option<String>, String> {
+    if get_stored_token(&app)?.is_none() {
+        return Ok(None);
+    }
+
+    get_access_token(&app).await.map(Some)
 }
 
 #[tauri::command]

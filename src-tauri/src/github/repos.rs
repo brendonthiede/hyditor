@@ -1,5 +1,20 @@
 use serde::Serialize;
 
+use crate::auth::token_store::get_access_token;
+
+#[derive(Debug, serde::Deserialize)]
+struct GithubRepoOwner {
+    login: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct GithubRepo {
+    owner: GithubRepoOwner,
+    name: String,
+    default_branch: String,
+    description: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct RepoInfo {
     pub owner: String,
@@ -8,7 +23,84 @@ pub struct RepoInfo {
     pub description: Option<String>,
 }
 
+fn parse_next_link(link_header: &str) -> Option<String> {
+    for part in link_header.split(',') {
+        let segment = part.trim();
+        if !segment.contains("rel=\"next\"") {
+            continue;
+        }
+
+        let start = segment.find('<')?;
+        let end = segment.find('>')?;
+        return Some(segment[start + 1..end].to_string());
+    }
+
+    None
+}
+
 #[tauri::command]
-pub async fn list_repos() -> Result<Vec<RepoInfo>, String> {
-    Ok(vec![])
+pub async fn list_repos(app: tauri::AppHandle) -> Result<Vec<RepoInfo>, String> {
+    let token = get_access_token(&app).await?;
+    let client = reqwest::Client::new();
+
+    let mut repos: Vec<RepoInfo> = Vec::new();
+    let mut next_url = Some(
+        "https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member"
+            .to_string(),
+    );
+    let mut page_count = 0;
+
+    while let Some(url) = next_url {
+        page_count += 1;
+        if page_count > 10 {
+            break;
+        }
+
+        let response = client
+            .get(&url)
+            .header("Accept", "application/vnd.github+json")
+            .header("Authorization", format!("Bearer {token}"))
+            .header("User-Agent", "hyditor")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .send()
+            .await
+            .map_err(|err| format!("failed to list repositories: {err}"))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<no response body>".to_string());
+            return Err(format!("list repos failed with status {status}: {body}"));
+        }
+
+        let link_header = response
+            .headers()
+            .get("link")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
+
+        let page: Vec<GithubRepo> = response
+            .json()
+            .await
+            .map_err(|err| format!("invalid list repos response: {err}"))?;
+
+        repos.extend(page.into_iter().map(|repo| RepoInfo {
+            owner: repo.owner.login,
+            name: repo.name,
+            default_branch: repo.default_branch,
+            description: repo.description,
+        }));
+
+        next_url = link_header.and_then(|value| parse_next_link(&value));
+    }
+
+    repos.sort_by(|a, b| {
+        let left = format!("{}/{}", a.owner.to_lowercase(), a.name.to_lowercase());
+        let right = format!("{}/{}", b.owner.to_lowercase(), b.name.to_lowercase());
+        left.cmp(&right)
+    });
+
+    Ok(repos)
 }

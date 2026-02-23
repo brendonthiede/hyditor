@@ -1,23 +1,41 @@
 <script lang="ts">
-  import { loadRepos, selectRepo } from '$lib/stores/repo';
+  import { loadRepos, repoState, selectRepo } from '$lib/stores/repo';
   import { onMount } from 'svelte';
   import { repoList } from '$lib/stores/repo';
 
-  onMount(loadRepos);
+  onMount(() => {
+    void loadRepos();
+  });
 </script>
 
 <section class="repo-picker">
   <h2>Select a Repository</h2>
-  {#if $repoList.length === 0}
+  {#if $repoState.loading}
+    <p>Loading repositories…</p>
+  {:else if $repoList.length === 0}
     <p>No repositories available yet.</p>
   {:else}
     <ul>
       {#each $repoList as repo}
         <li>
-          <button on:click={() => selectRepo(repo)}>{repo.owner}/{repo.name}</button>
+          <button
+            on:click={() => {
+              void selectRepo(repo);
+            }}
+            disabled={$repoState.cloning !== null}
+          >
+            {repo.owner}/{repo.name}
+            {#if $repoState.cloning === `${repo.owner}/${repo.name}`}
+              (cloning…)
+            {/if}
+          </button>
         </li>
       {/each}
     </ul>
+  {/if}
+
+  {#if $repoState.error}
+    <p class="error">{$repoState.error}</p>
   {/if}
 </section>
 
@@ -38,5 +56,9 @@
     width: 100%;
     text-align: left;
     padding: 0.6rem;
+  }
+
+  .error {
+    color: #f85149;
   }
 </style>

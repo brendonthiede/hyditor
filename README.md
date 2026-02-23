@@ -71,6 +71,7 @@ Note: The app embeds a public `client_id` for Device Flow. This is not a secret 
 
 - ✅ GitHub App Device Flow authentication with token refresh
 - ✅ Stronghold-backed encrypted token storage with key generation
+- ✅ Authenticated GitHub repository listing + clone-to-cache flow (git2)
 
 ## Tests
 
@@ -96,6 +97,16 @@ cd src-tauri && cargo test
 
 Note: Run the Rust tests from the `src-tauri` directory.
 
+Ignored Rust tests:
+
+- `src-tauri/src/auth/token_store.rs` contains Stronghold integration-style tests marked `#[ignore]`.
+- They are excluded from default `cargo test` runs to avoid environment-sensitive failures in normal dev/CI loops.
+- Run them explicitly when validating auth vault behavior:
+
+```bash
+cd src-tauri && cargo test auth::token_store -- --ignored
+```
+
 ## Auth Implementation Notes
 
 - The GitHub Device Flow `client_id` is public and safe to embed.
@@ -106,6 +117,5 @@ Note: Run the Rust tests from the `src-tauri` directory.
 
 ## Next Work
 
-- Implement repository list/clone using authenticated GitHub + git2 flows
 - Implement CodeMirror integration and hybrid preview pipeline
 - OS keychain-backed key derivation (instead of local key file) for enhanced security
