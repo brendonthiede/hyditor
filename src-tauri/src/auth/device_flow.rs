@@ -42,7 +42,9 @@ const DEFAULT_CLIENT_ID: &str = "Iv1.REPLACE_WITH_YOUR_GITHUB_APP_CLIENT_ID";
 fn github_client_id() -> Result<String, String> {
     // Check env first for override (useful in dev/testing)
     if let Ok(client_id) = std::env::var("HYDITOR_GITHUB_CLIENT_ID") {
-        return Ok(client_id);
+        if !client_id.is_empty() {
+            return Ok(client_id);
+        }
     }
     
     // Use hardcoded default client ID (public, safe to embed)
@@ -94,7 +96,7 @@ pub async fn start_device_flow() -> Result<DeviceFlowStart, String> {
 }
 
 #[tauri::command]
-pub async fn poll_for_token(device_code: String) -> Result<PollTokenResult, String> {
+pub async fn poll_for_token(app: tauri::AppHandle, device_code: String) -> Result<PollTokenResult, String> {
     let client_id = github_client_id()?;
     let client = Client::new();
     let response = client
@@ -132,7 +134,7 @@ pub async fn poll_for_token(device_code: String) -> Result<PollTokenResult, Stri
                 .map(|duration| duration.as_secs() as i64 + expires_in)
         });
 
-        set_token(StoredToken {
+        set_token(&app, StoredToken {
             access_token: access_token.clone(),
             refresh_token: payload.refresh_token.clone(),
             expires_at,
@@ -166,7 +168,10 @@ pub async fn poll_for_token(device_code: String) -> Result<PollTokenResult, Stri
 }
 
 /// Refresh an expired access token using the refresh token
-pub async fn refresh_access_token(refresh_token: &str) -> Result<StoredToken, String> {
+pub async fn refresh_access_token(
+    app: &tauri::AppHandle,
+    refresh_token: &str,
+) -> Result<StoredToken, String> {
     let client_id = github_client_id()?;
     let client = Client::new();
     let response = client
@@ -210,7 +215,7 @@ pub async fn refresh_access_token(refresh_token: &str) -> Result<StoredToken, St
             expires_at,
         };
 
-        set_token(new_token.clone())?;
+        set_token(app, new_token.clone())?;
         Ok(new_token)
     } else {
         Err("token refresh did not return access token".to_string())
@@ -223,11 +228,27 @@ mod tests {
 
     #[test]
     fn github_client_id_prefers_env_var() {
+        // Save original value if it exists
+        let original = std::env::var("HYDITOR_GITHUB_CLIENT_ID").ok();
+        
+        // Set test value
         std::env::set_var("HYDITOR_GITHUB_CLIENT_ID", "Iv1.test_override_id");
         let result = github_client_id();
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "Iv1.test_override_id");
-        std::env::remove_var("HYDITOR_GITHUB_CLIENT_ID");
+        
+        // Verify env var was used
+        assert!(result.is_ok(), "github_client_id() should succeed");
+        assert_eq!(
+            result.unwrap(),
+            "Iv1.test_override_id",
+            "should use env var value"
+        );
+        
+        // Restore original value
+        if let Some(orig) = original {
+            std::env::set_var("HYDITOR_GITHUB_CLIENT_ID", orig);
+        } else {
+            std::env::remove_var("HYDITOR_GITHUB_CLIENT_ID");
+        }
     }
 
     #[test]

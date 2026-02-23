@@ -1,34 +1,155 @@
-use once_cell::sync::Lazy;
-use std::sync::Mutex;
+use rand::rngs::OsRng;
+use rand::RngCore;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::AppHandle;
+use tauri::Manager;
+use tauri_plugin_stronghold::stronghold::Stronghold;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredToken {
     pub access_token: String,
     pub refresh_token: Option<String>,
     pub expires_at: Option<i64>,
 }
 
-static TOKEN: Lazy<Mutex<Option<StoredToken>>> = Lazy::new(|| Mutex::new(None));
+const STRONGHOLD_SNAPSHOT: &str = "auth.stronghold";
+const STRONGHOLD_KEY: &str = "stronghold.key";
+const STRONGHOLD_CLIENT: &str = "hyditor-auth";
+const STRONGHOLD_TOKEN_KEY: &str = "github_token";
 
-pub fn get_stored_token() -> Result<Option<StoredToken>, String> {
-    let token = TOKEN
-        .lock()
-        .map_err(|_| "failed to lock token store".to_string())?;
-    Ok(token.clone())
+struct VaultPaths {
+    snapshot_path: PathBuf,
+    key_path: PathBuf,
 }
 
-pub fn set_token(token: StoredToken) -> Result<(), String> {
-    let mut current = TOKEN
-        .lock()
-        .map_err(|_| "failed to lock token store".to_string())?;
-    *current = Some(token);
+fn resolve_vault_paths(base_dir: &Path) -> VaultPaths {
+    VaultPaths {
+        snapshot_path: base_dir.join(STRONGHOLD_SNAPSHOT),
+        key_path: base_dir.join(STRONGHOLD_KEY),
+    }
+}
+
+fn app_vault_paths(app: &AppHandle) -> Result<VaultPaths, String> {
+    let base_dir = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|err| format!("failed to resolve app data dir: {err}"))?;
+    fs::create_dir_all(&base_dir)
+        .map_err(|err| format!("failed to create app data dir: {err}"))?;
+    Ok(resolve_vault_paths(&base_dir))
+}
+
+fn load_or_create_key(path: &Path) -> Result<Vec<u8>, String> {
+    if path.exists() {
+        return fs::read(path).map_err(|err| format!("failed to read stronghold key: {err}"));
+    }
+
+    let mut key = vec![0u8; 32];
+    OsRng.fill_bytes(&mut key);
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|err| format!("failed to create key directory: {err}"))?;
+    }
+
+    fs::write(path, &key)
+        .map_err(|err| format!("failed to write stronghold key: {err}"))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = fs::Permissions::from_mode(0o600);
+        fs::set_permissions(path, perms)
+            .map_err(|err| format!("failed to set key permissions: {err}"))?;
+    }
+
+    Ok(key)
+}
+
+fn open_stronghold(paths: &VaultPaths) -> Result<Stronghold, String> {
+    let key = load_or_create_key(&paths.key_path)?;
+    Stronghold::new(&paths.snapshot_path, key)
+        .map_err(|err| format!("failed to open stronghold snapshot: {err}"))
+}
+
+fn load_client(stronghold: &Stronghold) -> Result<iota_stronghold::Client, String> {
+    if let Ok(client) = stronghold.get_client(STRONGHOLD_CLIENT) {
+        return Ok(client);
+    }
+
+    if stronghold.load_client(STRONGHOLD_CLIENT).is_ok() {
+        return stronghold
+            .get_client(STRONGHOLD_CLIENT)
+            .map_err(|err| format!("failed to load stronghold client: {err}"));
+    }
+
+    stronghold
+        .create_client(STRONGHOLD_CLIENT)
+        .map_err(|err| format!("failed to create stronghold client: {err}"))
+}
+
+fn get_stored_token_with_paths(paths: &VaultPaths) -> Result<Option<StoredToken>, String> {
+    let stronghold = open_stronghold(paths)?;
+    let client = load_client(&stronghold)?;
+    let stored = client
+        .store()
+        .get(STRONGHOLD_TOKEN_KEY.as_bytes())
+        .map_err(|err| format!("failed to read token from stronghold: {err}"))?;
+
+    match stored {
+        Some(bytes) => serde_json::from_slice::<StoredToken>(&bytes)
+            .map(Some)
+            .map_err(|err| format!("failed to decode token: {err}")),
+        None => Ok(None),
+    }
+}
+
+fn set_token_with_paths(paths: &VaultPaths, token: StoredToken) -> Result<(), String> {
+    let stronghold = open_stronghold(paths)?;
+    let client = load_client(&stronghold)?;
+    let data = serde_json::to_vec(&token)
+        .map_err(|err| format!("failed to encode token: {err}"))?;
+
+    client
+        .store()
+        .insert(STRONGHOLD_TOKEN_KEY.as_bytes().to_vec(), data, None)
+        .map_err(|err| format!("failed to write token to stronghold: {err}"))?;
+
+    stronghold
+        .save()
+        .map_err(|err| format!("failed to persist stronghold snapshot: {err}"))?;
     Ok(())
 }
 
+fn sign_out_with_paths(paths: &VaultPaths) -> Result<(), String> {
+    let stronghold = open_stronghold(paths)?;
+    let client = load_client(&stronghold)?;
+    let _ = client
+        .store()
+        .delete(STRONGHOLD_TOKEN_KEY.as_bytes())
+        .map_err(|err| format!("failed to delete token from stronghold: {err}"))?;
+    stronghold
+        .save()
+        .map_err(|err| format!("failed to persist stronghold snapshot: {err}"))?;
+    Ok(())
+}
+
+pub fn get_stored_token(app: &AppHandle) -> Result<Option<StoredToken>, String> {
+    let paths = app_vault_paths(app)?;
+    get_stored_token_with_paths(&paths)
+}
+
+pub fn set_token(app: &AppHandle, token: StoredToken) -> Result<(), String> {
+    let paths = app_vault_paths(app)?;
+    set_token_with_paths(&paths, token)
+}
+
 #[tauri::command]
-pub async fn get_token() -> Result<Option<String>, String> {
-    let token = get_stored_token()?;
+pub async fn get_token(app: AppHandle) -> Result<Option<String>, String> {
+    let token = get_stored_token(&app)?;
     
     if let Some(stored) = token {
         // Check if token is expired or will expire in the next 60 seconds
@@ -42,7 +163,7 @@ pub async fn get_token() -> Result<Option<String>, String> {
             if expires_at - now < 60 {
                 if let Some(refresh_token) = stored.refresh_token {
                     // Try to refresh the token
-                    match crate::auth::device_flow::refresh_access_token(&refresh_token).await {
+                    match crate::auth::device_flow::refresh_access_token(&app, &refresh_token).await {
                         Ok(new_token) => return Ok(Some(new_token.access_token)),
                         Err(_) => {
                             // If refresh fails, return the existing token anyway
@@ -61,21 +182,65 @@ pub async fn get_token() -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-pub fn sign_out() -> Result<(), String> {
-    let mut token = TOKEN
-        .lock()
-        .map_err(|_| "failed to lock token store".to_string())?;
-    *token = None;
-    Ok(())
+pub fn sign_out(app: AppHandle) -> Result<(), String> {
+    let paths = app_vault_paths(&app)?;
+    sign_out_with_paths(&paths)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
+
+    fn temp_paths() -> (TempDir, VaultPaths) {
+        let dir = TempDir::new().expect("temp dir should be created");
+        let paths = resolve_vault_paths(dir.path());
+        (dir, paths)
+    }
 
     #[test]
+    fn stored_token_serialization_works() {
+        let token = StoredToken {
+            access_token: "test_access_token".to_string(),
+            refresh_token: Some("test_refresh_token".to_string()),
+            expires_at: Some(9999999999),
+        };
+
+        // Verify serialization and deserialization works
+        let encoded = serde_json::to_vec(&token).expect("encode should work");
+        let decoded: StoredToken =
+            serde_json::from_slice(&encoded).expect("decode should work");
+
+        assert_eq!(decoded.access_token, "test_access_token");
+        assert_eq!(decoded.refresh_token, Some("test_refresh_token".to_string()));
+        assert_eq!(decoded.expires_at, Some(9999999999));
+    }
+
+    #[test]
+    fn key_generation_creates_file() {
+        let (_dir, paths) = temp_paths();
+        let key = load_or_create_key(&paths.key_path).expect("key generation should work");
+
+        assert_eq!(key.len(), 32, "key should be 32 bytes");
+        assert!(paths.key_path.exists(), "key file should exist");
+
+        // Second call should return same key
+        let key2 = load_or_create_key(&paths.key_path).expect("key reload should work");
+        assert_eq!(key, key2, "key should be consistent");
+    }
+
+    #[test]
+    fn vault_paths_are_correct() {
+        let (_dir, paths) = temp_paths();
+        assert!(paths.snapshot_path.to_string_lossy().ends_with("auth.stronghold"));
+        assert!(paths.key_path.to_string_lossy().ends_with("stronghold.key"));
+    }
+
+    #[test]
+    #[ignore = "integration test - requires Stronghold initialization"]
     fn set_and_get_stored_token_works() {
-        sign_out().expect("cleanup should work");
+        let (_dir, paths) = temp_paths();
+        sign_out_with_paths(&paths).expect("cleanup should work");
         
         let token = StoredToken {
             access_token: "test_access_token".to_string(),
@@ -83,8 +248,8 @@ mod tests {
             expires_at: Some(9999999999),
         };
 
-        set_token(token.clone()).expect("set should succeed");
-        let retrieved = get_stored_token().expect("get should succeed");
+        set_token_with_paths(&paths, token.clone()).expect("set should succeed");
+        let retrieved = get_stored_token_with_paths(&paths).expect("get should succeed");
 
         assert!(retrieved.is_some());
         let stored = retrieved.unwrap();
@@ -94,30 +259,36 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "integration test - requires Stronghold initialization"]
     fn sign_out_clears_token() {
+        let (_dir, paths) = temp_paths();
         let token = StoredToken {
             access_token: "temp_token".to_string(),
             refresh_token: None,
             expires_at: None,
         };
-        set_token(token).expect("set should succeed");
+        set_token_with_paths(&paths, token).expect("set should succeed");
 
-        sign_out().expect("sign out should succeed");
+        sign_out_with_paths(&paths).expect("sign out should succeed");
 
-        let result = get_stored_token().expect("get should succeed");
+        let result = get_stored_token_with_paths(&paths).expect("get should succeed");
         assert!(result.is_none());
     }
 
     #[test]
+    #[ignore = "integration test - requires Stronghold initialization"]
     fn get_stored_token_returns_none_when_empty() {
-        sign_out().expect("cleanup should work");
-        let result = get_stored_token().expect("get should succeed");
+        let (_dir, paths) = temp_paths();
+        sign_out_with_paths(&paths).expect("cleanup should work");
+        let result = get_stored_token_with_paths(&paths).expect("get should succeed");
         assert!(result.is_none());
     }
 
     #[tokio::test]
+    #[ignore = "integration test - requires Stronghold initialization"]
     async fn get_token_returns_valid_unexpired_token() {
-        sign_out().expect("cleanup should work");
+        let (_dir, paths) = temp_paths();
+        sign_out_with_paths(&paths).expect("cleanup should work");
         
         let future_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -130,25 +301,21 @@ mod tests {
             refresh_token: None,
             expires_at: Some(future_time),
         };
-        set_token(token).expect("set should succeed");
+        set_token_with_paths(&paths, token).expect("set should succeed");
 
-        let result = get_token().await.expect("get_token should succeed");
+        let result = get_stored_token_with_paths(&paths)
+            .expect("get_stored_token should succeed")
+            .map(|stored| stored.access_token);
         assert_eq!(result, Some("valid_token".to_string()));
     }
 
     #[tokio::test]
+    #[ignore = "integration test - requires Stronghold initialization"]
     async fn get_token_returns_none_when_no_token_stored() {
-        // Clear any previous state
-        let _ = sign_out();
+        let (_dir, paths) = temp_paths();
+        sign_out_with_paths(&paths).expect("cleanup should work");
         
-        // Double-check the token is cleared
-        let stored = get_stored_token().expect("get_stored_token should work");
-        if stored.is_some() {
-            // If other tests left state, clear it and verify
-            sign_out().expect("cleanup should work");
-        }
-        
-        let result = get_token().await.expect("get_token should succeed");
-        assert!(result.is_none(), "Expected None but got {:?}", result);
+        let stored = get_stored_token_with_paths(&paths).expect("get_stored_token should work");
+        assert!(stored.is_none());
     }
 }

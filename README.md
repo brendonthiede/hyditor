@@ -70,7 +70,7 @@ Note: The app embeds a public `client_id` for Device Flow. This is not a secret 
 ## Implemented (Phase 1)
 
 - ✅ GitHub App Device Flow authentication with token refresh
-- ✅ In-memory token storage with expiry checking (Stronghold integration is next)
+- ✅ Stronghold-backed encrypted token storage with key generation
 
 ## Tests
 
@@ -100,10 +100,12 @@ Note: Run the Rust tests from the `src-tauri` directory.
 
 - The GitHub Device Flow `client_id` is public and safe to embed.
 - `HYDITOR_GITHUB_CLIENT_ID` overrides the embedded value for development.
-- Phase 1 stores tokens in memory with expiry checks and refresh; Stronghold storage is the next step.
+- Tokens stored in Stronghold encrypted vault (XChaCha20-Poly1305 encryption) at `~/.local/share/hyditor/auth.stronghold`.
+- Vault encryption key is stored in `~/.local/share/hyditor/stronghold.key` with restricted permissions (Unix: 0o600).
+- Tokens are persisted between app sessions and refreshed automatically before expiry.
 
 ## Next Work
 
-- Replace in-memory token storage with Stronghold-backed secure vault
 - Implement repository list/clone using authenticated GitHub + git2 flows
 - Implement CodeMirror integration and hybrid preview pipeline
+- OS keychain-backed key derivation (instead of local key file) for enhanced security
