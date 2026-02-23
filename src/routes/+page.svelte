@@ -6,10 +6,13 @@
   import Preview from '$lib/components/Preview.svelte';
   import GitPanel from '$lib/components/GitPanel.svelte';
   import BranchSelector from '$lib/components/BranchSelector.svelte';
-  import { authState } from '$lib/stores/auth';
+  import { authState, loadAuthState } from '$lib/stores/auth';
   import { activeRepo } from '$lib/stores/repo';
+  import { onMount } from 'svelte';
 
   $: authenticated = $authState.status === 'authenticated';
+
+  onMount(loadAuthState);
 </script>
 
 {#if !authenticated}

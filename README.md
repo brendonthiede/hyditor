@@ -56,6 +56,8 @@ npm install
 npm run tauri:dev
 ```
 
+**Optional:** To use a custom GitHub App for development, set `HYDITOR_GITHUB_CLIENT_ID` environment variable with your app's public client ID before running.
+
 ## Security Direction
 
 - No tokens persisted in plaintext
@@ -63,9 +65,13 @@ npm run tauri:dev
 - Tauri capability allowlist + CSP
 - Git operations through Rust (git2) command layer
 
+## Implemented (Phase 1)
+
+- ✅ GitHub App Device Flow authentication with token refresh
+- ✅ In-memory token storage with expiry checking
+
 ## Next Work
 
-- Implement GitHub App Device Flow against GitHub endpoints
-- Replace placeholder token storage with Stronghold-backed secure vault
+- Replace in-memory token storage with Stronghold-backed secure vault
 - Implement repository list/clone using authenticated GitHub + git2 flows
 - Implement CodeMirror integration and hybrid preview pipeline
