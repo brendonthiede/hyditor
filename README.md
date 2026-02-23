@@ -70,6 +70,30 @@ npm run tauri:dev
 - ✅ GitHub App Device Flow authentication with token refresh
 - ✅ In-memory token storage with expiry checking
 
+## Tests
+
+Frontend (Vitest):
+
+- src/lib/utils/markdown.test.ts
+- src/lib/utils/frontmatter.test.ts
+- src/lib/utils/jekyll.test.ts
+
+Backend (Rust unit tests):
+
+- src-tauri/src/fs/scoped.rs
+- src-tauri/src/preview/jekyll.rs
+- src-tauri/src/auth/token_store.rs
+- src-tauri/src/auth/device_flow.rs
+
+Run all tests:
+
+```bash
+npm test
+cd src-tauri && cargo test
+```
+
+Note: Run the Rust tests from the `src-tauri` directory.
+
 ## Next Work
 
 - Replace in-memory token storage with Stronghold-backed secure vault
