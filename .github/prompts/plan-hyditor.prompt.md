@@ -66,7 +66,8 @@ Security is the top priority. Every design decision is evaluated through this le
    - User enters code, authorizes the Hyditor GitHub App
    - App polls `POST https://github.com/login/oauth/access_token` with `device_code`
    - On success, receives `access_token` + `refresh_token`
-   - **No client secret is embedded in the binary** (device flow does not require it)
+  - **No client secret is embedded in the binary** (device flow does not require it)
+  - The public `client_id` is safe to embed and can be overridden via `HYDITOR_GITHUB_CLIENT_ID` for development
    - Token has fine-grained permissions: `contents:write`, `pull_requests:write`, `metadata:read`
    - User selects which repositories to grant access to during App installation
 
@@ -77,7 +78,8 @@ Security is the top priority. Every design decision is evaluated through this le
    - On sign-out, revoke token via `DELETE /applications/{client_id}/token`
 
 3. **Token storage**
-   - Stored in `tauri-plugin-stronghold` encrypted vault (XChaCha20-Poly1305)
+  - Phase 1 uses in-memory storage with expiry checks and refresh; Stronghold integration follows
+  - Stored in `tauri-plugin-stronghold` encrypted vault (XChaCha20-Poly1305)
    - Vault is unlocked with a key derived from the OS keychain entry
    - Tokens are never written to disk in plaintext, never in config files, never in localStorage
    - Memory is zeroed after use where possible (Rust's `zeroize` crate)
@@ -136,9 +138,9 @@ Security is the top priority. Every design decision is evaluated through this le
 - Implement Rust Tauri command `auth::poll_for_token(device_code)`:
   - Poll `POST https://github.com/login/oauth/access_token` at specified interval
   - Handle `authorization_pending`, `slow_down`, `expired_token`, `access_denied` responses
-  - On success, store token in Stronghold vault, return success to frontend
+  - On success, store token (Phase 1: in-memory; later: Stronghold), return success to frontend
 - Implement Rust Tauri command `auth::get_token()`:
-  - Read from Stronghold, check expiry, refresh if needed, return token
+  - Read from storage, check expiry, refresh if needed, return token
 - Implement Rust Tauri command `auth::sign_out()`:
   - Revoke token via GitHub API, clear Stronghold entry
 - Frontend: Auth screen with "Sign in with GitHub" button, user code display, and polling status

@@ -58,6 +58,8 @@ npm run tauri:dev
 
 **Optional:** To use a custom GitHub App for development, set `HYDITOR_GITHUB_CLIENT_ID` environment variable with your app's public client ID before running.
 
+Note: The app embeds a public `client_id` for Device Flow. This is not a secret and can be overridden for development.
+
 ## Security Direction
 
 - No tokens persisted in plaintext
@@ -68,7 +70,7 @@ npm run tauri:dev
 ## Implemented (Phase 1)
 
 - ✅ GitHub App Device Flow authentication with token refresh
-- ✅ In-memory token storage with expiry checking
+- ✅ In-memory token storage with expiry checking (Stronghold integration is next)
 
 ## Tests
 
@@ -93,6 +95,12 @@ cd src-tauri && cargo test
 ```
 
 Note: Run the Rust tests from the `src-tauri` directory.
+
+## Auth Implementation Notes
+
+- The GitHub Device Flow `client_id` is public and safe to embed.
+- `HYDITOR_GITHUB_CLIENT_ID` overrides the embedded value for development.
+- Phase 1 stores tokens in memory with expiry checks and refresh; Stronghold storage is the next step.
 
 ## Next Work
 
