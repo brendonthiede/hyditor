@@ -199,6 +199,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ Full Preview deep-link: opening Full Preview navigates the iframe directly to the current Markdown file (posts, draft posts, and regular pages); switching files while in Jekyll mode updates the iframe URL automatically; `--drafts` flag passed to Jekyll so draft posts are served; permalink URL is resolved from the post's front matter (`permalink`, `categories`, `category`, `slug`, `date` overrides) and the site's `_config.yml` `permalink` setting (named presets `date`, `pretty`, `ordinal`, `none` and custom templates all supported)
 - ✅ Full Preview loads by default when a repository is opened; "Instant" is available as a toggle for users who prefer faster previews without Jekyll features; toolbar button order updated (Full Preview first)
 - ✅ Repository list filter: realtime search by owner/name/description with frontend pagination (20 per page) so users with many repos can quickly find the repo they want
+- ✅ Preview viewport scrollbars: the preview canvas scrolls when the selected viewport (Desktop/Tablet/Mobile) is larger than the panel, preserving the exact chosen width/height so responsive breakpoints are rendered correctly
 
 ## Contributor Workflow
 
@@ -267,7 +268,6 @@ cd src-tauri && cargo test -- --test-threads=1
 
 ## Next Work
 
-- When showing the preview, have scrollbars to ensure that the window is the selected size, but the user can scroll to see the full preview if it is larger than the window, in order to make sure the reactive layout is preserved.
 - There have to be scrollbar(s) in the editor window. By default we are word wrapping, so only vertical scrollbars are needed, but if we add a toggle for word wrap in the future, horizontal scrollbars will be needed as well.
 - If a file is only different in whitespace, ignore it in the git status and preview (optional toggle for showing whitespace diffs). Do not allow whitespace-only changes to be staged or committed.
 - Add a filter to the file list to hide files that are not relevant to Jekyll sites (e.g. node_modules, vendor, .bundle, etc.) and/or binary files that cannot be previewed (optional toggle for showing all files) and to filter to matching names.

@@ -75,13 +75,16 @@
     overflow: auto;
     padding: 0.75rem;
     display: flex;
-    justify-content: center;
+    justify-content: flex-start;
     align-items: flex-start;
+    /* Canvas scrolls; the viewport renders at its exact selected dimensions */
+    min-width: 0;
+    min-height: 0;
   }
 
   .viewport {
-    max-width: 100%;
-    max-height: 100%;
+    /* Exact dimensions — never shrink to fit the panel; canvas provides scrollbars */
+    flex-shrink: 0;
     border: 1px solid #30363d;
     background: #0d1117;
     overflow: hidden;
