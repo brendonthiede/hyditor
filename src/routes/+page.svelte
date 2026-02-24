@@ -64,6 +64,9 @@
         </button>
       </div>
       <div class="toolbar-actions">
+        <button class="open-repo-btn" on:click={resetRepoSession}>
+          Open a different repository
+        </button>
         <BranchSelector />
         <PRDialog />
         <div class="signout-menu">
@@ -167,6 +170,21 @@
 
   .signout-menu {
     position: relative;
+  }
+
+  .open-repo-btn {
+    border: 1px solid #30363d;
+    background: transparent;
+    color: inherit;
+    border-radius: 6px;
+    padding: 0.35rem 0.6rem;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .open-repo-btn:hover,
+  .open-repo-btn:focus-visible {
+    border-color: #8b949e;
   }
 
   .signout-trigger {

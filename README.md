@@ -201,6 +201,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ Repository list filter: realtime search by owner/name/description with frontend pagination (20 per page) so users with many repos can quickly find the repo they want
 - ✅ Preview viewport scrollbars: the preview canvas scrolls when the selected viewport (Desktop/Tablet/Mobile) is larger than the panel, preserving the exact chosen width/height so responsive breakpoints are rendered correctly
 - ✅ Editor scrollbar: vertical scrollbar enabled on the CodeMirror scroller (`overflow-y: auto`); horizontal scroll suppressed while word-wrap is on (`overflow-x: hidden`) — comment in source notes where to update this when a word-wrap toggle is added
+- ✅ "Open another repository" button in the toolbar header clears all repo/editor/git state and returns to the repository selection screen
 
 ## Contributor Workflow
 
@@ -269,7 +270,6 @@ cd src-tauri && cargo test -- --test-threads=1
 
 ## Next Work
 
-- Provide a way to go back to the repo selection screen after a repo is opened (e.g. "Open another repository" button in the sidebar header that clears the current state and navigates back to the repo list).
 - The different "panels" should be able to be resized, collapsed, and rearranged by the user (e.g. drag to resize the file explorer width, collapse the Git panel when not in use, drag the preview to the right side instead of below the editor, etc.). The preview panel should also have a fullscreen toggle to maximize the preview area when needed, perhaps popping out to a new window.
 - If a file is only different in whitespace, ignore it in the git status and preview (optional toggle for showing whitespace diffs). Do not allow whitespace-only changes to be staged or committed.
 - Add a filter to the file list to hide files that are not relevant to Jekyll sites (e.g. node_modules, vendor, .bundle, etc.) and/or binary files that cannot be previewed (optional toggle for showing all files) and to filter to matching names.
