@@ -56,7 +56,7 @@ npm install
 npm run tauri:dev
 ```
 
-If `Sign in with GitHub` reports client ID not configured, set `HYDITOR_GITHUB_CLIENT_ID` to your GitHub App public client ID before running.
+If `Sign in with GitHub` reports client ID not configured, copy `.env.example` to `.env` and set `HYDITOR_GITHUB_CLIENT_ID` to your GitHub App public client ID. `npm run tauri:dev` loads `.env` automatically.
 
 Note: The Device Flow `client_id` is public (not a secret). `HYDITOR_GITHUB_CLIENT_ID` overrides the embedded value for development.
 
@@ -149,7 +149,7 @@ cd src-tauri && cargo test -- --test-threads=1
 
 - The GitHub Device Flow `client_id` is public and safe to embed.
 - `HYDITOR_GITHUB_CLIENT_ID` overrides the embedded value for development.
-  - `HYDITOR_GITHUB_CLIENT_ID` can be set in env.dev so that it can be sourced easily by automation.
+  - Copy `.env.example` to `.env` and fill in the value; `.env` is loaded automatically by `npm run tauri:dev` via `dotenv-cli`.
 - Tokens stored in Stronghold encrypted vault (XChaCha20-Poly1305 encryption) at `~/.local/share/hyditor/auth.stronghold`.
 - Stronghold unlock material is persisted in the OS keychain (`io.github.brendonthiede.hyditor` / `stronghold-master-key`) and hashed with app context to derive the runtime vault key.
 - Existing `~/.local/share/hyditor/stronghold.key` entries are migrated to the keychain on first access and the local key file is removed.

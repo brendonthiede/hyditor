@@ -11,3 +11,4 @@ build/
 dist/
 src-tauri/target/
 *.log
+.env

@@ -12,7 +12,7 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "tauri:dev": "tauri dev",
+    "tauri:dev": "dotenv tauri dev",
     "tauri:build": "tauri build"
   },
   "devDependencies": {
@@ -22,6 +22,7 @@
     "@tauri-apps/cli": "^2.1.0",
     "@types/node": "^22.12.0",
     "@typescript-eslint/parser": "^8.56.1",
+    "dotenv-cli": "^11.0.0",
     "eslint": "^10.0.2",
     "eslint-plugin-svelte": "^3.15.0",
     "prettier": "^3.4.2",
