@@ -27,22 +27,27 @@ fn log_preview(message: &str) {
     eprintln!("[Preview][{ts}] {message}");
 }
 
-fn command_exists(name: &str) -> bool {
-    Command::new("sh")
-        .arg("-c")
-        .arg(format!("command -v {name} >/dev/null 2>&1"))
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
-}
-
-fn wait_for_preview_ready() -> Result<(), String> {
+fn wait_for_preview_ready(child: &mut Child) -> Result<(), String> {
     let addr: SocketAddr = format!("{PREVIEW_HOST}:{PREVIEW_PORT}")
         .parse()
         .map_err(|err| format!("invalid preview address: {err}"))?;
 
     let start = Instant::now();
     while start.elapsed() < PREVIEW_BOOT_TIMEOUT {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return Err(format!(
+                    "Jekyll process exited unexpectedly (status: {status}). \
+                     Check that all required gems are installed (`bundle install`) \
+                     and that Jekyll can build your site."
+                ));
+            }
+            Ok(None) => {}
+            Err(err) => {
+                return Err(format!("failed to check Jekyll process status: {err}"));
+            }
+        }
+
         match TcpStream::connect_timeout(&addr, Duration::from_millis(400)) {
             Ok(_) => return Ok(()),
             Err(_) => thread::sleep(Duration::from_millis(300)),
@@ -62,10 +67,38 @@ fn kill_process(child: &mut Child) -> io::Result<()> {
     Ok(())
 }
 
+fn shell_command_exists(name: &str) -> bool {
+    Command::new("bash")
+        .args(["-l", "-c", &format!("command -v {name} >/dev/null 2>&1")])
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+fn bundle_install(repo_path: &Path) -> Result<(), String> {
+    log_preview("running bundle install");
+    let status = Command::new("bash")
+        .args(["-l", "-c", "bundle install"])
+        .current_dir(repo_path)
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .map_err(|err| format!("failed to run bundle install: {err}"))?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "bundle install failed (status: {status}). \
+             Check your Gemfile and Ruby installation."
+        ))
+    }
+}
+
 fn start_jekyll_process(repo_path: &Path) -> Result<Child, String> {
     let gemfile_exists = repo_path.join("Gemfile").exists();
-    let use_bundle = gemfile_exists && command_exists("bundle");
-    let has_jekyll = command_exists("jekyll");
+    let use_bundle = gemfile_exists && shell_command_exists("bundle");
+    let has_jekyll = shell_command_exists("jekyll");
 
     if !use_bundle && !has_jekyll {
         return Err(
@@ -74,38 +107,26 @@ fn start_jekyll_process(repo_path: &Path) -> Result<Child, String> {
         );
     }
 
-    let mut command = if use_bundle {
-        let mut cmd = Command::new("bundle");
-        cmd.args([
-            "exec",
-            "jekyll",
-            "serve",
-            "--host",
-            PREVIEW_HOST,
-            "--port",
-            "4000",
-            "--livereload",
-        ]);
-        cmd
+    if use_bundle {
+        bundle_install(repo_path)?;
+    }
+
+    let jekyll_args = format!(
+        "serve --host {PREVIEW_HOST} --port {PREVIEW_PORT} --baseurl \"\""
+    );
+    let shell_cmd = if use_bundle {
+        format!("bundle exec jekyll {jekyll_args}")
     } else {
-        let mut cmd = Command::new("jekyll");
-        cmd.args([
-            "serve",
-            "--host",
-            PREVIEW_HOST,
-            "--port",
-            "4000",
-            "--livereload",
-        ]);
-        cmd
+        format!("jekyll {jekyll_args}")
     };
 
-    command
+    log_preview(&format!("shell command: {shell_cmd}"));
+
+    Command::new("bash")
+        .args(["-l", "-c", &shell_cmd])
         .current_dir(repo_path)
         .stdout(Stdio::null())
-        .stderr(Stdio::null());
-
-    command
+        .stderr(Stdio::inherit())
         .spawn()
         .map_err(|err| format!("failed to launch Jekyll preview process: {err}"))
 }
@@ -138,7 +159,7 @@ pub fn start_jekyll(repo_path: String) -> Result<String, String> {
     log_preview(&format!("starting Jekyll for {}", repo_path.to_string_lossy()));
     let mut child = start_jekyll_process(&repo_path)?;
 
-    match wait_for_preview_ready() {
+    match wait_for_preview_ready(&mut child) {
         Ok(_) => {
             let mut active = ACTIVE_JEKYLL
                 .lock()
