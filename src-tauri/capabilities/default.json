@@ -5,6 +5,7 @@
   "permissions": [
     "core:default",
     "clipboard-manager:default",
+    "clipboard-manager:allow-write-text",
     "mcp-bridge:default",
     "opener:default",
     "stronghold:default"

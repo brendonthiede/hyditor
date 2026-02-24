@@ -1,5 +1,4 @@
 import { writable } from 'svelte/store';
-import { openUrl } from '@tauri-apps/plugin-opener';
 import { writeText as writeClipboardText } from '@tauri-apps/plugin-clipboard-manager';
 import { getToken, pollForToken, signOut, startDeviceFlow } from '$lib/tauri/auth';
 import { extractAuthExpiredMessage } from '$lib/utils/authErrors';
@@ -55,16 +54,6 @@ async function copyToClipboard(text: string): Promise<void> {
   }
 
   await writeClipboardText(text);
-}
-
-async function openVerificationUri(url: string): Promise<void> {
-  try {
-    await openUrl(url);
-  } catch {
-    if (typeof window !== 'undefined') {
-      window.open(url, '_blank', 'noopener,noreferrer');
-    }
-  }
 }
 
 async function runPolling(deviceCode: string, intervalSeconds: number, signal: AbortSignal): Promise<void> {
@@ -182,13 +171,22 @@ export async function beginAuth(): Promise<void> {
 
   try {
     const flow = await startDeviceFlow();
-    await Promise.allSettled([copyToClipboard(flow.user_code), openVerificationUri(flow.verification_uri)]);
+
+    let codeCopied = false;
+    try {
+      await copyToClipboard(flow.user_code);
+      codeCopied = true;
+    } catch {
+      // Clipboard write failed; user will need to copy the code manually
+    }
 
     authState.set({
       status: 'pending',
       userCode: flow.user_code,
       verificationUri: flow.verification_uri,
-      message: 'Complete authorization in GitHub to finish signing in.',
+      message: codeCopied
+        ? 'Code copied to clipboard. Open the link above and paste it to sign in.'
+        : 'Copy the code above, open the link, and paste it to sign in.',
       pollStatus: 'starting'
     });
 

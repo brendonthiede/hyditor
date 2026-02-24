@@ -84,7 +84,7 @@ Note: The Device Flow `client_id` is public (not a secret). `HYDITOR_GITHUB_CLIE
 - ✅ Security hardening: explicit local sign-out + revocation guidance UX for refresh-token invalidation edge cases
 - ✅ Security hardening: proactive expired-token detection in GitHub/repo workflows with guided re-auth prompts
 - ✅ Auth resilience: device verification links open via system browser integration and corrupted Stronghold snapshot recovery auto-resets local auth state
-- ✅ Auth UX: `Sign in with GitHub` now auto-opens the verification URI in the system browser and copies the device code to clipboard
+- ✅ Auth UX: `Sign in with GitHub` copies the device code to clipboard; user clicks the verification link to open the browser
 - ✅ Performance: in-memory token cache eliminates repeated `Stronghold::new()` calls (snapshot decrypt + key derivation) on every `get_token`/`get_access_token` invocation; `get_token` double-open bug fixed
 
 ## Contributor Workflow
@@ -154,7 +154,6 @@ cd src-tauri && cargo test auth::token_store -- --ignored
 
 ## Next Work
 
-- The sign in with github button automatically launches the system browser to the verification URI, but the clipboard copy functionality is not working. The code should be copied, but the user should still need to click the link to open the browser and sign in.
 - Make folders collapsible in the file tree.
 - Fix "Full Preview" operation. Currently fails to start Jekyll. Frontend shows "Failed to start Jekyll preview." and the process prints "Jekyll failed to become ready: Jekyll preview did not become ready in time." to the terminal.
 - Manual testing and validation of implemented features with various GitHub accounts, repo configurations, and edge cases (token expiry, revoked tokens, 2FA accounts, large repos, etc.)
