@@ -27,7 +27,7 @@ pub fn read_tree(repo_path: String) -> Result<Vec<TreeEntry>, String> {
         .filter_entry(|e| {
             e.file_name()
                 .to_str()
-                .map(|s| s != ".git")
+                .map(|s| !matches!(s, ".git" | ".github" | ".vscode"))
                 .unwrap_or(true)
         })
         .filter_map(|e| e.ok())
@@ -107,6 +107,27 @@ mod tests {
         assert!(paths.contains(&"_posts".to_string()));
         assert!(paths.contains(&"_posts/entry.md".to_string()));
         assert!(!paths.iter().any(|p| p.starts_with(".git")), "no .git entries should appear: {:?}", paths);
+    }
+
+    #[test]
+    fn read_tree_excludes_dot_github_and_dot_vscode_directories() {
+        let root = tempdir().expect("temp dir should be created");
+        // Create directories that should be excluded
+        fs::create_dir_all(root.path().join(".github").join("workflows")).expect(".github/workflows should be created");
+        fs::write(root.path().join(".github").join("workflows").join("ci.yml"), "").expect("ci.yml should be written");
+        fs::create_dir_all(root.path().join(".vscode")).expect(".vscode should be created");
+        fs::write(root.path().join(".vscode").join("settings.json"), "{}").expect("settings.json should be written");
+        // Create a normal post that should be included
+        let posts_dir = root.path().join("_posts");
+        fs::create_dir_all(&posts_dir).expect("_posts should be created");
+        fs::write(posts_dir.join("entry.md"), "# test").expect("entry should be written");
+
+        let entries = read_tree(root.path().to_string_lossy().to_string()).expect("tree should be read");
+        let paths: Vec<String> = entries.iter().map(|e| e.path.clone()).collect();
+
+        assert!(paths.contains(&"_posts".to_string()), "_posts should be present");
+        assert!(!paths.iter().any(|p| p.starts_with(".github")), "no .github entries should appear: {:?}", paths);
+        assert!(!paths.iter().any(|p| p.starts_with(".vscode")), "no .vscode entries should appear: {:?}", paths);
     }
 
     #[test]

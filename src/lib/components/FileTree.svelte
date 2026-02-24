@@ -66,6 +66,21 @@
     });
   }
 
+  function getAllDirPaths(ns: TreeNode[]): string[] {
+    const paths: string[] = [];
+    for (const n of ns) {
+      if (n.is_dir) {
+        paths.push(n.path);
+        paths.push(...getAllDirPaths(n.children));
+      }
+    }
+    return paths;
+  }
+
+  function collapseAll() {
+    collapsedDirs.set(new SvelteSet(getAllDirPaths(tree)));
+  }
+
   $: isRoot = nodes === undefined;
   $: tree = isRoot ? buildTree($fileTree) : [];
   $: displayNodes = nodes ?? tree;
@@ -73,7 +88,14 @@
 
 {#if isRoot}
   <section class="file-tree">
-    <h3>Files</h3>
+    <div class="file-tree-header">
+      <h3>Files</h3>
+      {#if $fileTree.length > 0}
+        <button class="collapse-all-btn" title="Collapse all folders" on:click={collapseAll}>
+          ⊟
+        </button>
+      {/if}
+    </div>
     {#if $fileTree.length === 0}
       <p>No files loaded.</p>
     {:else}
@@ -111,6 +133,34 @@
     height: 100%;
     padding: 0.75rem;
     overflow: auto;
+  }
+
+  .file-tree-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.25rem;
+  }
+
+  .file-tree-header h3 {
+    margin: 0;
+  }
+
+  .collapse-all-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: inherit;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0.15rem 0.35rem;
+    opacity: 0.7;
+  }
+
+  .collapse-all-btn:hover {
+    border-color: #30363d;
+    opacity: 1;
   }
 
   ul {
