@@ -86,7 +86,10 @@ Note: The Device Flow `client_id` is public (not a secret). `HYDITOR_GITHUB_CLIE
 - ✅ Auth resilience: device verification links open via system browser integration and corrupted Stronghold snapshot recovery auto-resets local auth state
 - ✅ Auth UX: `Sign in with GitHub` copies the device code to clipboard; user clicks the verification link to open the browser
 - ✅ Performance: in-memory token cache eliminates repeated `Stronghold::new()` calls (snapshot decrypt + key derivation) on every `get_token`/`get_access_token` invocation; `get_token` double-open bug fixed
-- ✅ Performance: backend-managed device flow polling loop (`start_device_polling`) eliminates per-poll IPC round-trips and redundant `getToken()` verification; status updates emitted via Tauri events (`auth://poll-status`)
+- ✅ Performance: backend-managed device flow polling loop (`start_device_polling`) eliminates per-poll IPC round-trips and redundant `getToken()` verification; status updates emitted via Tauri events (`auth-poll-status`)
+- ✅ Performance: startup `get_token` skips Stronghold when no snapshot file exists (or snapshot is zero-bytes/corrupt); corrupted snapshots are removed without retrying the expensive key-derivation; all HTTP clients use 15-second timeouts to prevent indefinite hangs during token refresh
+- ✅ Performance: `[profile.dev.package."*"] opt-level = 2` in Cargo.toml compiles all dependency crates with optimizations even in debug builds — reduces Stronghold operations (Argon2 key derivation + XChaCha20-Poly1305 save) from ~48 s to ~1 s; all 20 token_store integration tests now run in the default `cargo test` suite (no longer `#[ignore]`d)
+- ✅ Auth UX: per-second countdown timer between polls shows "Waiting for authorization — next check in Ns" instead of raw API status strings
 
 ## Contributor Workflow
 
@@ -133,12 +136,11 @@ Note: Run the Rust tests from the `src-tauri` directory.
 
 Ignored Rust tests:
 
-- `src-tauri/src/auth/token_store.rs` contains Stronghold integration-style tests marked `#[ignore]`.
-- They are excluded from default `cargo test` runs to avoid environment-sensitive failures in normal dev/CI loops.
-- Run them explicitly when validating auth vault behavior:
+- All `src-tauri/src/auth/token_store.rs` integration tests run by default (the `[profile.dev.package."*"] opt-level = 2` Cargo profile override keeps Stronghold operations under ~2 s).
+- Run the full Rust suite:
 
 ```bash
-cd src-tauri && cargo test auth::token_store -- --ignored
+cd src-tauri && cargo test -- --test-threads=1
 ```
 
 ## Auth Implementation Notes
@@ -151,7 +153,7 @@ cd src-tauri && cargo test auth::token_store -- --ignored
 - Existing `~/.local/share/hyditor/stronghold.key` entries are migrated to the keychain on first access and the local key file is removed.
 - Tokens are persisted between app sessions and refreshed automatically before expiry.
 - An in-memory `StoredToken` cache (`TOKEN_CACHE`) avoids repeated Stronghold snapshot reads.  The cache is populated on first `get_stored_token` call and invalidated on `set_token` / `sign_out`.  Diagnostic timing logs (`[Stronghold]`) are emitted to stderr on cache-miss paths to aid future profiling.
-- If Stronghold snapshot decryption fails (for example due to stale/corrupted local snapshot state), Hyditor resets only the local auth snapshot and prompts re-authentication.
+- If Stronghold snapshot decryption fails (for example due to stale/corrupted local snapshot state), Hyditor removes the corrupt snapshot and shows the sign-in screen without retrying the expensive key-derivation step.
 
 ## Next Work
 
@@ -159,5 +161,4 @@ cd src-tauri && cargo test auth::token_store -- --ignored
 - Make folders collapsible in the file tree.
 - Fix "Full Preview" operation. Currently fails to start Jekyll. Frontend shows "Failed to start Jekyll preview." and the process prints "Jekyll failed to become ready: Jekyll preview did not become ready in time." to the terminal.
 - Manual testing and validation of implemented features with various GitHub accounts, repo configurations, and edge cases (token expiry, revoked tokens, 2FA accounts, large repos, etc.)
-- During auth, showing the last poll status, have a countdown timer for the next poll (this assumes that we are polling at a set interval)
 - Define next roadmap item

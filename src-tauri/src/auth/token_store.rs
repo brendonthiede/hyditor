@@ -175,9 +175,11 @@ fn open_stronghold(paths: &VaultPaths) -> Result<Stronghold, String> {
                         eprintln!("[Stronghold] Warning: failed to remove corrupted snapshot: {remove_err}");
                     }
                 }
-                eprintln!("[Stronghold] Recovering from corruption, retrying with fresh snapshot");
-                return Stronghold::new(&paths.snapshot_path, key)
-                    .map_err(|retry_err| format!("failed to open stronghold snapshot after reset: {retry_err}"));
+                // Don't retry Stronghold::new() here — it would cost another
+                // full key-derivation cycle (~23s in debug).  Return an error
+                // and let the caller treat it as "no token".
+                eprintln!("[Stronghold] Corrupted snapshot removed (took {:.3}s); caller should treat as empty", t0.elapsed().as_secs_f64());
+                return Err("stronghold_snapshot_corrupted".to_string());
             }
 
             Err(format!("failed to open stronghold snapshot: {error_message}"))
@@ -217,8 +219,38 @@ fn get_stored_token_with_paths(paths: &VaultPaths) -> Result<Option<StoredToken>
         return Ok(Some(cached));
     }
 
+    // No snapshot file on disk → no token has ever been stored.  Skip the
+    // expensive Stronghold::new() call entirely (key-derivation + file I/O).
+    if !paths.snapshot_path.exists() {
+        eprintln!("[Stronghold] snapshot does not exist, skipping open");
+        return Ok(None);
+    }
+
+    // Skip obviously-corrupt snapshots (e.g. zero-byte leftover files).
+    match fs::metadata(&paths.snapshot_path) {
+        Ok(meta) if meta.len() == 0 => {
+            eprintln!("[Stronghold] snapshot is empty (0 bytes), removing");
+            let _ = fs::remove_file(&paths.snapshot_path);
+            return Ok(None);
+        }
+        Err(_) => {
+            eprintln!("[Stronghold] cannot stat snapshot, skipping open");
+            return Ok(None);
+        }
+        _ => {}
+    }
+
     let t0 = Instant::now();
-    let stronghold = open_stronghold(paths)?;
+    let stronghold = match open_stronghold(paths) {
+        Ok(s) => s,
+        Err(ref e) if e == "stronghold_snapshot_corrupted" => {
+            // Corrupted snapshot was already removed by open_stronghold.
+            // Treat as "no stored token" so UI shows sign-in screen.
+            eprintln!("[Stronghold] get_stored_token_with_paths: corrupted snapshot, returning None");
+            return Ok(None);
+        }
+        Err(e) => return Err(e),
+    };
     let client = load_client(&stronghold)?;
     let stored = client
         .store()
@@ -451,15 +483,15 @@ mod tests {
     // ── Integration tests ─────────────────────────────────────────
     //
     // These exercise the full Stronghold encrypt/decrypt path (file I/O
-    // + NCKey memory protection).  Each `Stronghold::new` / `.save()`
-    // takes ~10-15 s in an *unoptimized debug* build, so the whole suite
-    // runs for several minutes.
+    // + NCKey memory protection).  The Cargo profile override
+    // `[profile.dev.package."*"] opt-level = 2` keeps each operation
+    // under ~2 s even in debug builds, so the suite runs in CI without
+    // needing --ignored.
     //
-    // Run them explicitly:
-    //   cargo test auth::token_store -- --ignored --test-threads=1
+    // Run them:
+    //   cargo test auth::token_store -- --test-threads=1
 
     #[test]
-    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
     fn open_stronghold_creates_fresh_snapshot() {
         let (_dir, paths) = setup_integration();
 
@@ -471,7 +503,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
     fn set_and_get_stored_token_works() {
         let (_dir, paths) = setup_integration();
 
@@ -490,7 +521,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
     fn sign_out_clears_token() {
         let (_dir, paths) = setup_integration();
 
@@ -508,7 +538,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
     fn get_stored_token_returns_none_when_empty() {
         let (_dir, paths) = setup_integration();
 
@@ -517,7 +546,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
     fn cached_read_skips_stronghold() {
         let (_dir, paths) = setup_integration();
 
@@ -543,7 +571,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
     fn overwrite_token_updates_cache() {
         let (_dir, paths) = setup_integration();
 
@@ -575,7 +602,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
     fn sign_out_then_set_round_trip() {
         let (_dir, paths) = setup_integration();
 
@@ -598,7 +624,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
     fn corrupt_snapshot_is_recovered() {
         let (_dir, paths) = setup_integration();
 
@@ -610,17 +635,23 @@ mod tests {
         fs::write(&paths.snapshot_path, b"this is not a valid stronghold snapshot")
             .expect("writing corrupt data should succeed");
 
-        // open_stronghold should detect the corruption and reset.
-        let stronghold = open_stronghold(&paths);
-        assert!(stronghold.is_ok(), "open should recover from corruption: {:?}", stronghold.err());
+        // open_stronghold detects corruption, removes the file, and returns
+        // a sentinel error (avoids a second expensive key-derivation cycle).
+        let result = open_stronghold(&paths);
+        assert!(result.is_err(), "open should return sentinel error for corruption");
+        assert_eq!(
+            result.err().unwrap(),
+            "stronghold_snapshot_corrupted",
+            "error should be the corruption sentinel"
+        );
+        assert!(!paths.snapshot_path.exists(), "corrupt snapshot should be deleted");
 
-        // After recovery, the vault is empty (token was lost with the corrupt snapshot).
-        let result = get_stored_token_with_paths(&paths).expect("get should succeed");
-        assert!(result.is_none(), "token should be gone after corruption recovery");
+        // get_stored_token_with_paths catches the sentinel and returns None.
+        let stored = get_stored_token_with_paths(&paths).expect("get should succeed");
+        assert!(stored.is_none(), "token should be gone after corruption recovery");
     }
 
     #[test]
-    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
     fn load_client_creates_client_on_fresh_stronghold() {
         let (_dir, paths) = setup_integration();
 
@@ -630,7 +661,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
     fn load_client_reuses_existing_client() {
         let (_dir, paths) = setup_integration();
 
@@ -641,7 +671,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
     fn get_token_returns_valid_unexpired_token() {
         let (_dir, paths) = setup_integration();
 
@@ -665,7 +694,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
     fn get_token_returns_none_when_no_token_stored() {
         let (_dir, paths) = setup_integration();
 
@@ -674,7 +702,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
     fn token_without_expiry_is_returned() {
         let (_dir, paths) = setup_integration();
 
@@ -694,7 +721,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
     fn multiple_vaults_are_independent() {
         ensure_test_key_material();
         clear_cached_token();

@@ -52,7 +52,7 @@
       {#if $authState.userCode}<p class="code">{$authState.userCode}</p>{/if}
       {#if $authState.message}<p>{$authState.message}</p>{/if}
       {#if $authState.pollStatus}
-        <p class="poll-status">Last poll status: {$authState.pollStatus}</p>
+        <p class="poll-status">{$authState.pollStatus}</p>
       {/if}
     </div>
   {/if}

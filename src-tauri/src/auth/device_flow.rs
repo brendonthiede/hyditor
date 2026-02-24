@@ -85,7 +85,10 @@ fn github_client_id() -> Result<String, String> {
 pub async fn start_device_flow() -> Result<DeviceFlowStart, String> {
     log_auth("start_device_flow begin");
     let client_id = github_client_id()?;
-    let client = Client::new();
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|err| format!("failed to create HTTP client: {err}"))?;
     let response = client
         .post("https://github.com/login/device/code")
         .header("Accept", "application/json")
@@ -128,7 +131,10 @@ pub async fn start_device_flow() -> Result<DeviceFlowStart, String> {
 pub async fn poll_for_token(app: tauri::AppHandle, device_code: String) -> Result<PollTokenResult, String> {
     log_auth("poll_for_token begin");
     let client_id = github_client_id()?;
-    let client = Client::new();
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|err| format!("failed to create HTTP client: {err}"))?;
     let response = client
         .post("https://github.com/login/oauth/access_token")
         .header("Accept", "application/json")
@@ -222,7 +228,10 @@ pub async fn start_device_polling(
     POLLING_CANCELLED.store(false, Ordering::SeqCst);
 
     let client_id = github_client_id()?;
-    let client = Client::new();
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|err| format!("failed to create HTTP client: {err}"))?;
     let mut current_interval = std::cmp::max(interval, 1);
     let mut polls_completed: u32 = 0;
 
@@ -340,7 +349,7 @@ pub async fn start_device_polling(
 
         // Emit progress event so the frontend can update UI without IPC round-trips
         let _ = app.emit(
-            "auth://poll-status",
+            "auth-poll-status",
             PollStatusEvent {
                 status: status.to_string(),
                 polls_completed,
@@ -361,7 +370,10 @@ pub async fn refresh_access_token(
 ) -> Result<StoredToken, String> {
     log_auth("refresh_access_token begin");
     let client_id = github_client_id()?;
-    let client = Client::new();
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|err| format!("failed to create HTTP client: {err}"))?;
     let response = client
         .post("https://github.com/login/oauth/access_token")
         .header("Accept", "application/json")

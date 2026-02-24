@@ -19,6 +19,15 @@
         "/^cd /home/brendon/code/github/brendonthiede/hyditor/src-tauri && source \\.\\./env\\.dev && cargo build 2>&1 \\| tail -20$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^cd /home/brendon/code/github/brendonthiede/hyditor && source env\\.dev && npm run tauri:dev 2>&1 \\| tee /tmp/hyditor-login-flow\\.log$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "cargo clean": true,
+        "/^source \\.\\./env\\.dev && cargo build 2>&1 \\| tail -3$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     },
     "chat.mcp.serverSampling": {
