@@ -1,5 +1,5 @@
-use crate::auth::token_store::get_access_token;
-use git2::{build::RepoBuilder, Cred, FetchOptions, RemoteCallbacks, Repository};
+use crate::auth::token_store::{auth_expired_error, clear_stored_token, get_access_token};
+use git2::{build::RepoBuilder, Cred, ErrorCode, FetchOptions, RemoteCallbacks, Repository};
 use std::path::{Path, PathBuf};
 
 fn default_clone_base() -> Result<PathBuf, String> {
@@ -12,6 +12,18 @@ fn resolve_clone_base(path: Option<String>) -> Result<PathBuf, String> {
         Some(value) if !value.trim().is_empty() => Ok(PathBuf::from(value)),
         _ => default_clone_base(),
     }
+}
+
+fn is_git_auth_failure(error: &git2::Error) -> bool {
+    if error.code() == ErrorCode::Auth {
+        return true;
+    }
+
+    let message = error.message().to_ascii_lowercase();
+    message.contains("authentication")
+        || message.contains("credentials")
+        || message.contains("unauthorized")
+        || message.contains("http 401")
 }
 
 #[tauri::command]
@@ -48,9 +60,14 @@ pub async fn clone_repo(
     let mut builder = RepoBuilder::new();
     builder.fetch_options(fetch_options);
 
-    builder
-        .clone(&repo_url, &target)
-        .map_err(|e| format!("clone failed: {e}"))?;
+    builder.clone(&repo_url, &target).map_err(|error| {
+        if is_git_auth_failure(&error) {
+            let _ = clear_stored_token(&app);
+            return auth_expired_error("GitHub session expired while cloning. Sign in again.");
+        }
+
+        format!("clone failed: {error}")
+    })?;
 
     Ok(target.to_string_lossy().to_string())
 }

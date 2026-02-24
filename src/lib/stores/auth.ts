@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store';
 import { getToken, pollForToken, signOut, startDeviceFlow } from '$lib/tauri/auth';
-import { resetRepoSession } from '$lib/stores/repo';
+import { extractAuthExpiredMessage } from '$lib/utils/authErrors';
 
 type AuthState = {
   status: 'signed_out' | 'pending' | 'authenticated' | 'error';
@@ -12,6 +12,15 @@ type AuthState = {
 export const authState = writable<AuthState>({ status: 'signed_out' });
 
 let activePoll: AbortController | null = null;
+
+export function requireReauthentication(message?: string): void {
+  activePoll?.abort();
+  activePoll = null;
+  authState.set({
+    status: 'error',
+    message: message ?? 'GitHub session expired. Sign in again to continue.'
+  });
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -54,7 +63,13 @@ export async function loadAuthState(): Promise<void> {
       authState.set({ status: 'signed_out' });
     }
   } catch (error) {
-    resetRepoSession();
+    const message = error instanceof Error ? error.message : null;
+    const authExpiredMessage = extractAuthExpiredMessage(message);
+    if (authExpiredMessage) {
+      requireReauthentication(authExpiredMessage);
+      return;
+    }
+
     authState.set({
       status: 'error',
       message:
@@ -93,6 +108,5 @@ export async function logOut(): Promise<void> {
   activePoll?.abort();
   activePoll = null;
   await signOut();
-  resetRepoSession();
   authState.set({ status: 'signed_out' });
 }

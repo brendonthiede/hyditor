@@ -25,6 +25,11 @@ const STRONGHOLD_TOKEN_KEY: &str = "github_token";
 const KEYCHAIN_SERVICE: &str = "io.github.brendonthiede.hyditor";
 const KEYCHAIN_ACCOUNT: &str = "stronghold-master-key";
 const STRONGHOLD_KEY_DERIVATION_CONTEXT: &[u8] = b"hyditor-stronghold-v1";
+pub const AUTH_EXPIRED_PREFIX: &str = "AUTH_EXPIRED:";
+
+pub fn auth_expired_error(message: &str) -> String {
+    format!("{AUTH_EXPIRED_PREFIX} {message}")
+}
 
 struct VaultPaths {
     snapshot_path: PathBuf,
@@ -194,6 +199,11 @@ pub fn set_token(app: &AppHandle, token: StoredToken) -> Result<(), String> {
     set_token_with_paths(&paths, token)
 }
 
+pub fn clear_stored_token(app: &AppHandle) -> Result<(), String> {
+    let paths = app_vault_paths(app)?;
+    sign_out_with_paths(&paths)
+}
+
 pub async fn get_access_token(app: &AppHandle) -> Result<String, String> {
     let Some(stored) = get_stored_token(app)? else {
         return Err("Not authenticated. Sign in with GitHub first.".to_string());
@@ -210,21 +220,18 @@ pub async fn get_access_token(app: &AppHandle) -> Result<String, String> {
                 match crate::auth::device_flow::refresh_access_token(app, &refresh_token).await {
                     Ok(new_token) => return Ok(new_token.access_token),
                     Err(_) => {
-                        let paths = app_vault_paths(app)?;
-                        sign_out_with_paths(&paths)?;
-                        return Err(
-                            "Authentication expired. Local session was signed out. Sign in again."
-                                .to_string(),
-                        );
+                        clear_stored_token(app)?;
+                        return Err(auth_expired_error(
+                            "Authentication expired. Local session was signed out. Sign in again.",
+                        ));
                     }
                 }
             }
 
-            let paths = app_vault_paths(app)?;
-            sign_out_with_paths(&paths)?;
-            return Err(
-                "Authentication expired. Local session was signed out. Sign in again.".to_string(),
-            );
+            clear_stored_token(app)?;
+            return Err(auth_expired_error(
+                "Authentication expired. Local session was signed out. Sign in again.",
+            ));
         }
     }
 
@@ -283,6 +290,13 @@ mod tests {
 
         assert_eq!(first, second, "derived key should be deterministic");
         assert_eq!(first.len(), 32, "derived key should be 32 bytes");
+    }
+
+    #[test]
+    fn auth_expired_error_has_expected_prefix() {
+        let message = auth_expired_error("GitHub session expired while loading repositories. Sign in again.");
+        assert!(message.starts_with(AUTH_EXPIRED_PREFIX));
+        assert!(message.contains("loading repositories"));
     }
 
     #[test]

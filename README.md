@@ -82,6 +82,7 @@ Note: The app embeds a public `client_id` for Device Flow. This is not a secret 
 - ✅ Pull request workflow UI (list/create) backed by GitHub API commands
 - ✅ FrontMatterForm structured editor with add/edit/remove field workflow (Phase 3)
 - ✅ Security hardening: explicit local sign-out + revocation guidance UX for refresh-token invalidation edge cases
+- ✅ Security hardening: proactive expired-token detection in GitHub/repo workflows with guided re-auth prompts
 
 ## Contributor Workflow
 
@@ -105,6 +106,7 @@ Use this checklist in every PR description:
 
 Frontend (Vitest):
 
+- src/lib/utils/authErrors.test.ts
 - src/lib/utils/markdown.test.ts
 - src/lib/utils/frontmatter.test.ts
 - src/lib/utils/jekyll.test.ts
@@ -146,4 +148,5 @@ cd src-tauri && cargo test auth::token_store -- --ignored
 
 ## Next Work
 
-- Security hardening: add proactive expired-token detection in GitHub/repo workflows with guided re-auth prompts
+- Manual testing and validation of implemented features with various GitHub accounts, repo configurations, and edge cases (token expiry, revoked tokens, 2FA accounts, large repos, etc.)
+- Define next roadmap item

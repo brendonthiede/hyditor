@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::auth::token_store::get_access_token;
+use crate::auth::token_store::{auth_expired_error, clear_stored_token, get_access_token};
 
 #[derive(Debug, Deserialize)]
 struct GithubPullRequest {
@@ -24,6 +24,14 @@ pub struct PullRequestInfo {
     pub title: String,
     pub state: String,
     pub url: String,
+}
+
+fn is_auth_failure_status(status: reqwest::StatusCode, body: &str) -> bool {
+    if status == reqwest::StatusCode::UNAUTHORIZED {
+        return true;
+    }
+
+    status == reqwest::StatusCode::FORBIDDEN && body.to_ascii_lowercase().contains("bad credentials")
 }
 
 #[tauri::command]
@@ -64,6 +72,14 @@ pub async fn create_pr(
             .text()
             .await
             .unwrap_or_else(|_| "<no response body>".to_string());
+
+        if is_auth_failure_status(status, &body) {
+            let _ = clear_stored_token(&app);
+            return Err(auth_expired_error(
+                "GitHub session expired while creating a pull request. Sign in again.",
+            ));
+        }
+
         return Err(format!("create pull request failed with status {status}: {body}"));
     }
 
@@ -102,6 +118,14 @@ pub async fn list_prs(app: tauri::AppHandle, owner: String, repo: String) -> Res
             .text()
             .await
             .unwrap_or_else(|_| "<no response body>".to_string());
+
+        if is_auth_failure_status(status, &body) {
+            let _ = clear_stored_token(&app);
+            return Err(auth_expired_error(
+                "GitHub session expired while listing pull requests. Sign in again.",
+            ));
+        }
+
         return Err(format!("list pull requests failed with status {status}: {body}"));
     }
 

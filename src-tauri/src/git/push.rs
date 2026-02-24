@@ -1,5 +1,17 @@
-use crate::auth::token_store::get_access_token;
-use git2::{Cred, PushOptions, RemoteCallbacks, Repository};
+use crate::auth::token_store::{auth_expired_error, clear_stored_token, get_access_token};
+use git2::{Cred, ErrorCode, PushOptions, RemoteCallbacks, Repository};
+
+fn is_git_auth_failure(error: &git2::Error) -> bool {
+    if error.code() == ErrorCode::Auth {
+        return true;
+    }
+
+    let message = error.message().to_ascii_lowercase();
+    message.contains("authentication")
+        || message.contains("credentials")
+        || message.contains("unauthorized")
+        || message.contains("http 401")
+}
 
 #[tauri::command]
 pub async fn git_push(app: tauri::AppHandle, repo_path: String) -> Result<(), String> {
@@ -29,7 +41,14 @@ pub async fn git_push(app: tauri::AppHandle, repo_path: String) -> Result<(), St
     let refspec = format!("refs/heads/{branch_name}:refs/heads/{branch_name}");
     remote
         .push(&[&refspec], Some(&mut push_options))
-        .map_err(|e| format!("push failed: {e}"))?;
+        .map_err(|error| {
+            if is_git_auth_failure(&error) {
+                let _ = clear_stored_token(&app);
+                return auth_expired_error("GitHub session expired while pushing. Sign in again.");
+            }
+
+            format!("push failed: {error}")
+        })?;
 
     Ok(())
 }

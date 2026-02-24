@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::auth::token_store::get_access_token;
+use crate::auth::token_store::{auth_expired_error, clear_stored_token, get_access_token};
 
 #[derive(Debug, serde::Deserialize)]
 struct GithubRepoOwner {
@@ -38,6 +38,14 @@ fn parse_next_link(link_header: &str) -> Option<String> {
     None
 }
 
+fn is_auth_failure_status(status: reqwest::StatusCode, body: &str) -> bool {
+    if status == reqwest::StatusCode::UNAUTHORIZED {
+        return true;
+    }
+
+    status == reqwest::StatusCode::FORBIDDEN && body.to_ascii_lowercase().contains("bad credentials")
+}
+
 #[tauri::command]
 pub async fn list_repos(app: tauri::AppHandle) -> Result<Vec<RepoInfo>, String> {
     let token = get_access_token(&app).await?;
@@ -72,6 +80,14 @@ pub async fn list_repos(app: tauri::AppHandle) -> Result<Vec<RepoInfo>, String> 
                 .text()
                 .await
                 .unwrap_or_else(|_| "<no response body>".to_string());
+
+            if is_auth_failure_status(status, &body) {
+                let _ = clear_stored_token(&app);
+                return Err(auth_expired_error(
+                    "GitHub session expired while loading repositories. Sign in again.",
+                ));
+            }
+
             return Err(format!("list repos failed with status {status}: {body}"));
         }
 

@@ -18,7 +18,9 @@ import {
   unstage
 } from '$lib/tauri/git';
 import { readFile, readTree, writeFile } from '$lib/tauri/fs';
+import { requireReauthentication } from '$lib/stores/auth';
 import { fileTree, resetEditorState, setCurrentFileContent } from '$lib/stores/editor';
+import { extractAuthExpiredMessage } from '$lib/utils/authErrors';
 
 export type RepoInfo = {
   owner: string;
@@ -63,6 +65,21 @@ export const pullRequestState = writable<{
   error: string | null;
   lastAction: string | null;
 }>({ entries: [], busy: false, error: null, lastAction: null });
+
+function getErrorMessage(error: unknown): string | null {
+  return error instanceof Error ? error.message : null;
+}
+
+function handleAuthExpiredError(error: unknown): boolean {
+  const authExpiredMessage = extractAuthExpiredMessage(getErrorMessage(error));
+  if (!authExpiredMessage) {
+    return false;
+  }
+
+  resetRepoSession();
+  requireReauthentication(authExpiredMessage);
+  return true;
+}
 
 function isMarkdownPath(path: string): boolean {
   const lower = path.toLowerCase();
@@ -119,6 +136,10 @@ export async function loadRepos(): Promise<void> {
     const repos = await listRepos();
     repoList.set(repos);
   } catch (error) {
+    if (handleAuthExpiredError(error)) {
+      return;
+    }
+
     repoState.update((state) => ({
       ...state,
       error: error instanceof Error ? error.message : 'Failed to load repositories.'
@@ -144,6 +165,10 @@ export async function selectRepo(repo: RepoInfo): Promise<void> {
     await refreshBranches();
     await refreshPullRequests();
   } catch (error) {
+    if (handleAuthExpiredError(error)) {
+      return;
+    }
+
     repoState.update((state) => ({
       ...state,
       error: error instanceof Error ? error.message : 'Failed to clone repository.'
@@ -176,6 +201,10 @@ export async function refreshBranches(): Promise<void> {
       };
     });
   } catch (error) {
+    if (handleAuthExpiredError(error)) {
+      return;
+    }
+
     branchUiState.update((state) => ({
       ...state,
       error: error instanceof Error ? error.message : 'Failed to refresh branches.'
@@ -201,6 +230,10 @@ async function runBranchAction(actionLabel: string, action: (repoPath: string) =
     await openFirstMarkdownFile(current.localPath);
     branchUiState.update((state) => ({ ...state, lastAction: actionLabel }));
   } catch (error) {
+    if (handleAuthExpiredError(error)) {
+      return;
+    }
+
     branchUiState.update((state) => ({
       ...state,
       error: error instanceof Error ? error.message : `${actionLabel} failed.`
@@ -251,6 +284,10 @@ export async function refreshGitStatus(): Promise<void> {
       error: null
     }));
   } catch (error) {
+    if (handleAuthExpiredError(error)) {
+      return;
+    }
+
     gitState.update((state) => ({
       ...state,
       error: error instanceof Error ? error.message : 'Failed to refresh git status.'
@@ -270,6 +307,10 @@ async function runGitAction(actionLabel: string, action: (repoPath: string) => P
     await refreshGitStatus();
     gitState.update((state) => ({ ...state, lastAction: actionLabel }));
   } catch (error) {
+    if (handleAuthExpiredError(error)) {
+      return;
+    }
+
     gitState.update((state) => ({
       ...state,
       error: error instanceof Error ? error.message : `${actionLabel} failed.`
@@ -333,6 +374,10 @@ export async function refreshPullRequests(): Promise<void> {
       error: null
     }));
   } catch (error) {
+    if (handleAuthExpiredError(error)) {
+      return;
+    }
+
     pullRequestState.update((state) => ({
       ...state,
       error: error instanceof Error ? error.message : 'Failed to list pull requests.'
@@ -375,6 +420,10 @@ export async function createRepoPullRequest(input: {
       lastAction: `Created PR #${created.number}.`
     }));
   } catch (error) {
+    if (handleAuthExpiredError(error)) {
+      return;
+    }
+
     pullRequestState.update((state) => ({
       ...state,
       error: error instanceof Error ? error.message : 'Failed to create pull request.'

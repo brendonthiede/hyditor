@@ -1,5 +1,6 @@
 <script lang="ts">
   import { authState, beginAuth, logOut } from '$lib/stores/auth';
+  import { resetRepoSession } from '$lib/stores/repo';
 
   let clearingLocalSession = false;
 
@@ -7,6 +8,7 @@
     clearingLocalSession = true;
     try {
       await logOut();
+      resetRepoSession();
     } finally {
       clearingLocalSession = false;
     }

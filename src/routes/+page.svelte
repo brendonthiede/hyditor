@@ -8,7 +8,7 @@
   import BranchSelector from '$lib/components/BranchSelector.svelte';
   import PRDialog from '$lib/components/PRDialog.svelte';
   import { authState, loadAuthState, logOut } from '$lib/stores/auth';
-  import { activeRepo, gitState } from '$lib/stores/repo';
+  import { activeRepo, gitState, resetRepoSession } from '$lib/stores/repo';
   import { onMount } from 'svelte';
 
   let gitPanelEl: HTMLElement | null = null;
@@ -38,6 +38,7 @@
 
     try {
       await logOut();
+      resetRepoSession();
       showSignOutPanel = false;
     } catch (error) {
       signOutError = error instanceof Error ? error.message : 'Failed to sign out locally.';
