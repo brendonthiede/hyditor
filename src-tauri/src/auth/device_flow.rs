@@ -225,9 +225,17 @@ pub async fn refresh_access_token(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     #[test]
     fn github_client_id_prefers_env_var() {
+        let _guard = env_lock().lock().expect("env lock should not be poisoned");
+
         // Save original value if it exists
         let original = std::env::var("HYDITOR_GITHUB_CLIENT_ID").ok();
         
@@ -253,6 +261,8 @@ mod tests {
 
     #[test]
     fn github_client_id_falls_back_to_default() {
+        let _guard = env_lock().lock().expect("env lock should not be poisoned");
+
         std::env::remove_var("HYDITOR_GITHUB_CLIENT_ID");
         let result = github_client_id();
         
@@ -273,6 +283,8 @@ mod tests {
 
     #[test]
     fn github_client_id_validates_default_format() {
+        let _guard = env_lock().lock().expect("env lock should not be poisoned");
+
         std::env::remove_var("HYDITOR_GITHUB_CLIENT_ID");
         
         // The hardcoded default should either be a valid placeholder or a real client ID

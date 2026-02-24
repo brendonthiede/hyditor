@@ -81,6 +81,7 @@ Note: The app embeds a public `client_id` for Device Flow. This is not a secret 
 - ✅ Branch management UI (list/switch/create) with local checkout refresh
 - ✅ Pull request workflow UI (list/create) backed by GitHub API commands
 - ✅ FrontMatterForm structured editor with add/edit/remove field workflow (Phase 3)
+- ✅ Security hardening: explicit local sign-out + revocation guidance UX for refresh-token invalidation edge cases
 
 ## Contributor Workflow
 
@@ -145,4 +146,4 @@ cd src-tauri && cargo test auth::token_store -- --ignored
 
 ## Next Work
 
-- Security hardening: add explicit local sign-out revocation UX for refresh-token invalidation edge cases
+- Security hardening: add proactive expired-token detection in GitHub/repo workflows with guided re-auth prompts

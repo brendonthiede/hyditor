@@ -1,5 +1,16 @@
 <script lang="ts">
-  import { authState, beginAuth } from '$lib/stores/auth';
+  import { authState, beginAuth, logOut } from '$lib/stores/auth';
+
+  let clearingLocalSession = false;
+
+  async function clearLocalSession(): Promise<void> {
+    clearingLocalSession = true;
+    try {
+      await logOut();
+    } finally {
+      clearingLocalSession = false;
+    }
+  }
 </script>
 
 <section class="auth">
@@ -21,6 +32,13 @@
 
   {#if $authState.status === 'error' && $authState.message}
     <p class="error">{$authState.message}</p>
+    <button class="secondary" on:click={clearLocalSession} disabled={clearingLocalSession}>
+      {clearingLocalSession ? 'Clearing local session…' : 'Clear local session'}
+    </button>
+    <p class="hint">
+      Use this for refresh-token invalidation edge cases. Optional remote revocation is available in
+      <a href="https://github.com/settings/applications" target="_blank" rel="noreferrer">GitHub application settings</a>.
+    </p>
   {/if}
 
   <button on:click={beginAuth} disabled={$authState.status === 'pending'}>
@@ -58,5 +76,21 @@
 
   .error {
     color: #f85149;
+  }
+
+  .secondary {
+    justify-self: center;
+    padding: 0.45rem 0.8rem;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+  }
+
+  .hint {
+    margin: 0;
+    font-size: 0.9rem;
+    opacity: 0.85;
+    max-width: 36rem;
   }
 </style>

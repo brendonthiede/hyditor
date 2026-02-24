@@ -17,6 +17,8 @@ export const editorState = writable<{
   originalContent: '# Welcome to Hyditor\n\nStart editing your Jekyll content.'
 });
 
+const initialEditorContent = '# Welcome to Hyditor\n\nStart editing your Jekyll content.';
+
 export function updateCurrentContent(content: string): void {
   editorState.update((state) => ({ ...state, currentContent: content }));
 }
@@ -31,4 +33,13 @@ export function setCurrentFileContent(path: string, content: string): void {
 
 export function markCurrentContentSaved(): void {
   editorState.update((state) => ({ ...state, originalContent: state.currentContent }));
+}
+
+export function resetEditorState(): void {
+  fileTree.set([]);
+  editorState.set({
+    currentFile: null,
+    currentContent: initialEditorContent,
+    originalContent: initialEditorContent
+  });
 }

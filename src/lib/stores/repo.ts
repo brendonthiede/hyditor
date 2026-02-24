@@ -18,7 +18,7 @@ import {
   unstage
 } from '$lib/tauri/git';
 import { readFile, readTree, writeFile } from '$lib/tauri/fs';
-import { fileTree, setCurrentFileContent } from '$lib/stores/editor';
+import { fileTree, resetEditorState, setCurrentFileContent } from '$lib/stores/editor';
 
 export type RepoInfo = {
   owner: string;
@@ -382,4 +382,16 @@ export async function createRepoPullRequest(input: {
   } finally {
     pullRequestState.update((state) => ({ ...state, busy: false }));
   }
+}
+
+export function resetRepoSession(): void {
+  repoList.set([]);
+  activeRepo.set(null);
+  repoState.set({ loading: false, cloning: null, error: null });
+  gitState.set({ entries: [], busy: false, error: null, lastAction: null });
+  branchState.set({ current: 'main', branches: ['main'] });
+  branchUiState.set({ busy: false, error: null, lastAction: null });
+  pullRequestState.set({ entries: [], busy: false, error: null, lastAction: null });
+  fileTree.set([]);
+  resetEditorState();
 }

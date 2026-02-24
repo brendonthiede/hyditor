@@ -7,11 +7,14 @@
   import GitPanel from '$lib/components/GitPanel.svelte';
   import BranchSelector from '$lib/components/BranchSelector.svelte';
   import PRDialog from '$lib/components/PRDialog.svelte';
-  import { authState, loadAuthState } from '$lib/stores/auth';
+  import { authState, loadAuthState, logOut } from '$lib/stores/auth';
   import { activeRepo, gitState } from '$lib/stores/repo';
   import { onMount } from 'svelte';
 
   let gitPanelEl: HTMLElement | null = null;
+  let showSignOutPanel = false;
+  let signOutBusy = false;
+  let signOutError: string | null = null;
 
   $: authenticated = $authState.status === 'authenticated';
   $: stagedCount = $gitState.entries.filter((entry) => entry.staged).length;
@@ -27,6 +30,20 @@
       'button, input, textarea'
     );
     firstControl?.focus();
+  }
+
+  async function handleLocalSignOut(): Promise<void> {
+    signOutBusy = true;
+    signOutError = null;
+
+    try {
+      await logOut();
+      showSignOutPanel = false;
+    } catch (error) {
+      signOutError = error instanceof Error ? error.message : 'Failed to sign out locally.';
+    } finally {
+      signOutBusy = false;
+    }
   }
 
   onMount(loadAuthState);
@@ -48,6 +65,33 @@
       <div class="toolbar-actions">
         <BranchSelector />
         <PRDialog />
+        <div class="signout-menu">
+          <button class="signout-trigger" on:click={() => (showSignOutPanel = !showSignOutPanel)}>
+            Sign out
+          </button>
+          {#if showSignOutPanel}
+            <div class="signout-panel">
+              <p class="signout-title">Local sign-out (recommended for token issues)</p>
+              <p>
+                This clears encrypted auth tokens from this device. If your refresh token was invalidated, sign out here,
+                then re-authenticate.
+              </p>
+              <p>
+                Optional remote revocation: remove Hyditor from
+                <a href="https://github.com/settings/applications" target="_blank" rel="noreferrer"
+                  >GitHub application settings</a
+                >.
+              </p>
+              {#if signOutError}<p class="signout-error">{signOutError}</p>{/if}
+              <div class="signout-actions">
+                <button on:click={handleLocalSignOut} disabled={signOutBusy}>
+                  {signOutBusy ? 'Signing out…' : 'Sign out locally'}
+                </button>
+                <button on:click={() => (showSignOutPanel = false)} disabled={signOutBusy}>Cancel</button>
+              </div>
+            </div>
+          {/if}
+        </div>
       </div>
     </header>
     <section class="panels">
@@ -117,6 +161,56 @@
     display: flex;
     align-items: flex-start;
     gap: 0.75rem;
+    position: relative;
+  }
+
+  .signout-menu {
+    position: relative;
+  }
+
+  .signout-trigger {
+    border: 1px solid #30363d;
+    background: transparent;
+    color: inherit;
+    border-radius: 6px;
+    padding: 0.35rem 0.6rem;
+    cursor: pointer;
+  }
+
+  .signout-panel {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.35rem);
+    width: 24rem;
+    max-width: min(24rem, 90vw);
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    background: #0d1117;
+    padding: 0.75rem;
+    z-index: 10;
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .signout-title {
+    margin: 0;
+    font-weight: 600;
+  }
+
+  .signout-panel p {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.3;
+  }
+
+  .signout-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+  }
+
+  .signout-error {
+    color: #f85149;
   }
 
   .file-tree,

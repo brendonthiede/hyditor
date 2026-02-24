@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import { getToken, pollForToken, signOut, startDeviceFlow } from '$lib/tauri/auth';
+import { resetRepoSession } from '$lib/stores/repo';
 
 type AuthState = {
   status: 'signed_out' | 'pending' | 'authenticated' | 'error';
@@ -45,11 +46,22 @@ async function runPolling(deviceCode: string, intervalSeconds: number, signal: A
 }
 
 export async function loadAuthState(): Promise<void> {
-  const token = await getToken();
-  if (token) {
-    authState.set({ status: 'authenticated' });
-  } else {
-    authState.set({ status: 'signed_out' });
+  try {
+    const token = await getToken();
+    if (token) {
+      authState.set({ status: 'authenticated' });
+    } else {
+      authState.set({ status: 'signed_out' });
+    }
+  } catch (error) {
+    resetRepoSession();
+    authState.set({
+      status: 'error',
+      message:
+        error instanceof Error
+          ? error.message
+          : 'Session expired. Use local sign-out and sign in again.'
+    });
   }
 }
 
@@ -81,5 +93,6 @@ export async function logOut(): Promise<void> {
   activePoll?.abort();
   activePoll = null;
   await signOut();
+  resetRepoSession();
   authState.set({ status: 'signed_out' });
 }

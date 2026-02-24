@@ -209,9 +209,22 @@ pub async fn get_access_token(app: &AppHandle) -> Result<String, String> {
             if let Some(refresh_token) = stored.refresh_token.clone() {
                 match crate::auth::device_flow::refresh_access_token(app, &refresh_token).await {
                     Ok(new_token) => return Ok(new_token.access_token),
-                    Err(_) => return Ok(stored.access_token),
+                    Err(_) => {
+                        let paths = app_vault_paths(app)?;
+                        sign_out_with_paths(&paths)?;
+                        return Err(
+                            "Authentication expired. Local session was signed out. Sign in again."
+                                .to_string(),
+                        );
+                    }
                 }
             }
+
+            let paths = app_vault_paths(app)?;
+            sign_out_with_paths(&paths)?;
+            return Err(
+                "Authentication expired. Local session was signed out. Sign in again.".to_string(),
+            );
         }
     }
 
