@@ -77,6 +77,25 @@ Note: The app embeds a public `client_id` for Device Flow. This is not a secret 
 - ✅ Front matter display in instant preview header
 - ✅ Responsive viewport simulation (Desktop/Tablet/Mobile presets)
 - ✅ Debounced editor autosave to scoped filesystem
+- ✅ Git status, staging, commit, and push UI with file selectors
+
+## Contributor Workflow
+
+- README updates are required as part of "done" for every completed feature, architecture change, or workflow change.
+- Update both sections when relevant:
+  - `Implemented (Phase 1)` (or the current implementation section) with completed deliverables.
+  - `Next Work` by removing completed items and adding/refining upcoming work.
+- If commands, prerequisites, or test workflows change, update `Quick Start` and `Tests` in the same PR.
+
+## PR Checklist
+
+Use this checklist in every PR description:
+
+- [ ] Feature/status docs updated in README (`Implemented` + `Next Work` as needed).
+- [ ] Any command, setup, or test workflow changes reflected in README (`Quick Start` / `Tests`).
+- [ ] Frontend validation run (`npm run check`, `npm run lint`, `npm test`).
+- [ ] Backend validation run (`cd src-tauri && cargo test`).
+- [ ] `npm audit --omit=dev` reviewed for production-impacting vulnerabilities.
 
 ## Tests
 
@@ -122,7 +141,6 @@ cd src-tauri && cargo test auth::token_store -- --ignored
 
 ## Next Work
 
-- Implement git status, staging, commit, and push UI with file selectors
 - Implement branch management and PR workflow UI components
 - Add FrontMatterForm structured editor (Phase 3)
 - OS keychain-backed key derivation (instead of local key file) for enhanced security
