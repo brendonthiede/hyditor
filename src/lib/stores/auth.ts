@@ -5,14 +5,14 @@ import { getToken, pollForToken, signOut, startDeviceFlow } from '$lib/tauri/aut
 import { extractAuthExpiredMessage } from '$lib/utils/authErrors';
 
 type AuthState = {
-  status: 'signed_out' | 'pending' | 'authenticated' | 'error';
+  status: 'loading' | 'signed_out' | 'pending' | 'authenticated' | 'error';
   userCode?: string;
   verificationUri?: string;
   message?: string;
   pollStatus?: string;
 };
 
-export const authState = writable<AuthState>({ status: 'signed_out' });
+export const authState = writable<AuthState>({ status: 'loading' });
 
 let activePoll: AbortController | null = null;
 
@@ -85,6 +85,13 @@ async function runPolling(deviceCode: string, intervalSeconds: number, signal: A
     });
 
     if (result.status === 'authorized') {
+      // Show saving feedback – Stronghold write inside poll_for_token already
+      // persisted the token, but getToken() may still be slow on first call.
+      authState.update((current) => ({
+        ...current,
+        pollStatus: 'authorized — saving session…'
+      }));
+
       try {
         const token = await getToken();
         if (token) {
@@ -123,15 +130,36 @@ async function runPolling(deviceCode: string, intervalSeconds: number, signal: A
   }
 }
 
+/** Read the current snapshot of the auth store (synchronous). */
+function currentAuthStatus(): AuthState['status'] {
+  let status: AuthState['status'] = 'loading';
+  authState.subscribe((s) => (status = s.status))();
+  return status;
+}
+
 export async function loadAuthState(): Promise<void> {
   try {
     const token = await getToken();
+
+    // Guard: if the user already started a sign-in flow (or completed it)
+    // while we were waiting for Stronghold, don't overwrite their state.
+    const current = currentAuthStatus();
+    if (current === 'pending' || current === 'authenticated') {
+      return;
+    }
+
     if (token) {
       authState.set({ status: 'authenticated' });
     } else {
       authState.set({ status: 'signed_out' });
     }
   } catch (error) {
+    // Same guard after an error – don't clobber an active flow.
+    const current = currentAuthStatus();
+    if (current === 'pending' || current === 'authenticated') {
+      return;
+    }
+
     const message = toErrorMessage(error, 'Session expired. Use local sign-out and sign in again.');
     const authExpiredMessage = extractAuthExpiredMessage(message);
     if (authExpiredMessage) {

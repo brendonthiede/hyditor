@@ -5,6 +5,7 @@
   "permissions": [
     "core:default",
     "clipboard-manager:default",
+    "mcp-bridge:default",
     "opener:default",
     "stronghold:default"
   ]

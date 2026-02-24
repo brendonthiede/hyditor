@@ -6,11 +6,39 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
 use tauri::Manager;
 use tauri_plugin_stronghold::stronghold::Stronghold;
+
+/// In-memory token cache.  Reading from the Stronghold snapshot is the most
+/// expensive operation in the auth path (key derivation + file I/O +
+/// decryption).  By caching the `StoredToken` after the first successful read,
+/// subsequent calls skip Stronghold entirely.  The cache is invalidated
+/// whenever the token is written or deleted so Stronghold is re-read on the
+/// next access.
+static TOKEN_CACHE: OnceLock<Mutex<Option<StoredToken>>> = OnceLock::new();
+
+fn token_cache() -> &'static Mutex<Option<StoredToken>> {
+    TOKEN_CACHE.get_or_init(|| Mutex::new(None))
+}
+
+fn get_cached_token() -> Option<StoredToken> {
+    token_cache().lock().ok().and_then(|guard| guard.clone())
+}
+
+fn set_cached_token(token: &StoredToken) {
+    if let Ok(mut guard) = token_cache().lock() {
+        *guard = Some(token.clone());
+    }
+}
+
+fn clear_cached_token() {
+    if let Ok(mut guard) = token_cache().lock() {
+        *guard = None;
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredToken {
@@ -136,18 +164,17 @@ fn open_stronghold(paths: &VaultPaths) -> Result<Stronghold, String> {
     let key_material = load_or_create_key_material(paths)?;
     let key = derive_stronghold_key(&key_material);
 
-    match Stronghold::new(&paths.snapshot_path, key.clone()) {
+    let t0 = Instant::now();
+    let result = match Stronghold::new(&paths.snapshot_path, key.clone()) {
         Ok(stronghold) => Ok(stronghold),
         Err(err) => {
             let error_message = err.to_string();
             if should_reset_snapshot(&error_message) {
-                // Try to remove the corrupted file if it exists
                 if paths.snapshot_path.exists() {
                     if let Err(remove_err) = fs::remove_file(&paths.snapshot_path) {
                         eprintln!("[Stronghold] Warning: failed to remove corrupted snapshot: {remove_err}");
                     }
                 }
-                // Retry with fresh snapshot
                 eprintln!("[Stronghold] Recovering from corruption, retrying with fresh snapshot");
                 return Stronghold::new(&paths.snapshot_path, key)
                     .map_err(|retry_err| format!("failed to open stronghold snapshot after reset: {retry_err}"));
@@ -155,7 +182,9 @@ fn open_stronghold(paths: &VaultPaths) -> Result<Stronghold, String> {
 
             Err(format!("failed to open stronghold snapshot: {error_message}"))
         }
-    }
+    };
+    eprintln!("[Stronghold] open() took {:.3}s", t0.elapsed().as_secs_f64());
+    result
 }
 
 fn should_reset_snapshot(error_message: &str) -> bool {
@@ -183,6 +212,12 @@ fn load_client(stronghold: &Stronghold) -> Result<iota_stronghold::Client, Strin
 }
 
 fn get_stored_token_with_paths(paths: &VaultPaths) -> Result<Option<StoredToken>, String> {
+    // Fast path: return the in-memory cached token if available.
+    if let Some(cached) = get_cached_token() {
+        return Ok(Some(cached));
+    }
+
+    let t0 = Instant::now();
     let stronghold = open_stronghold(paths)?;
     let client = load_client(&stronghold)?;
     let stored = client
@@ -190,12 +225,23 @@ fn get_stored_token_with_paths(paths: &VaultPaths) -> Result<Option<StoredToken>
         .get(STRONGHOLD_TOKEN_KEY.as_bytes())
         .map_err(|err| format!("failed to read token from stronghold: {err}"))?;
 
-    match stored {
+    let result = match stored {
         Some(bytes) => serde_json::from_slice::<StoredToken>(&bytes)
             .map(Some)
-            .map_err(|err| format!("failed to decode token: {err}")),
-        None => Ok(None),
+            .map_err(|err| format!("failed to decode token: {err}"))?,
+        None => None,
+    };
+
+    // Populate the cache so subsequent reads skip Stronghold entirely.
+    if let Some(ref token) = result {
+        set_cached_token(token);
     }
+
+    eprintln!(
+        "[Stronghold] get_stored_token_with_paths took {:.3}s (cache miss)",
+        t0.elapsed().as_secs_f64()
+    );
+    Ok(result)
 }
 
 fn set_token_with_paths(paths: &VaultPaths, token: StoredToken) -> Result<(), String> {
@@ -212,10 +258,16 @@ fn set_token_with_paths(paths: &VaultPaths, token: StoredToken) -> Result<(), St
     stronghold
         .save()
         .map_err(|err| format!("failed to persist stronghold snapshot: {err}"))?;
+
+    // Update the in-memory cache so subsequent reads are instant.
+    set_cached_token(&token);
     Ok(())
 }
 
 fn sign_out_with_paths(paths: &VaultPaths) -> Result<(), String> {
+    // Invalidate the token cache first so no stale token can be returned.
+    clear_cached_token();
+
     let stronghold = open_stronghold(paths)?;
     let client = load_client(&stronghold)?;
     let _ = client
@@ -244,7 +296,9 @@ pub fn clear_stored_token(app: &AppHandle) -> Result<(), String> {
 }
 
 pub async fn get_access_token(app: &AppHandle) -> Result<String, String> {
+    let t0 = Instant::now();
     let Some(stored) = get_stored_token(app)? else {
+        eprintln!("[Stronghold] get_access_token (no token) took {:.3}s", t0.elapsed().as_secs_f64());
         return Err("Not authenticated. Sign in with GitHub first.".to_string());
     };
 
@@ -279,11 +333,17 @@ pub async fn get_access_token(app: &AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn get_token(app: AppHandle) -> Result<Option<String>, String> {
-    if get_stored_token(&app)?.is_none() {
-        return Ok(None);
-    }
-
-    get_access_token(&app).await.map(Some)
+    let t0 = Instant::now();
+    // get_access_token already calls get_stored_token internally, so we call it
+    // directly and map its "not authenticated" error to Ok(None) instead of
+    // performing the redundant double-open that was here before.
+    let result = match get_access_token(&app).await {
+        Ok(token) => Ok(Some(token)),
+        Err(err) if err == "Not authenticated. Sign in with GitHub first." => Ok(None),
+        Err(err) => Err(err),
+    };
+    eprintln!("[Stronghold] get_token took {:.3}s", t0.elapsed().as_secs_f64());
+    result
 }
 
 #[tauri::command]
@@ -297,21 +357,41 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    /// Pre-populate `KEY_MATERIAL_CACHE` with deterministic test bytes so that
+    /// no integration test ever reaches the OS keychain.
+    fn ensure_test_key_material() {
+        let _ = KEY_MATERIAL_CACHE.set(vec![42u8; 32]);
+    }
+
+    /// Create a fresh temp dir + vault paths and reset global caches.
+    fn setup_integration() -> (TempDir, VaultPaths) {
+        ensure_test_key_material();
+        clear_cached_token();
+        let dir = TempDir::new().expect("temp dir should be created");
+        let paths = resolve_vault_paths(dir.path());
+        (dir, paths)
+    }
+
     fn temp_paths() -> (TempDir, VaultPaths) {
         let dir = TempDir::new().expect("temp dir should be created");
         let paths = resolve_vault_paths(dir.path());
         (dir, paths)
     }
 
-    #[test]
-    fn stored_token_serialization_works() {
-        let token = StoredToken {
+    fn sample_token() -> StoredToken {
+        StoredToken {
             access_token: "test_access_token".to_string(),
             refresh_token: Some("test_refresh_token".to_string()),
             expires_at: Some(9999999999),
-        };
+        }
+    }
 
-        // Verify serialization and deserialization works
+    // ── Pure / unit tests (no Stronghold, no keychain) ──────────────
+
+    #[test]
+    fn stored_token_serialization_works() {
+        let token = sample_token();
+
         let encoded = serde_json::to_vec(&token).expect("encode should work");
         let decoded: StoredToken =
             serde_json::from_slice(&encoded).expect("decode should work");
@@ -353,20 +433,55 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "integration test - requires Stronghold initialization"]
+    fn token_cache_set_get_clear() {
+        clear_cached_token();
+
+        assert!(get_cached_token().is_none(), "cache should start empty");
+
+        let token = sample_token();
+        set_cached_token(&token);
+
+        let cached = get_cached_token().expect("cache should return a token");
+        assert_eq!(cached.access_token, "test_access_token");
+
+        clear_cached_token();
+        assert!(get_cached_token().is_none(), "cache should be empty after clear");
+    }
+
+    // ── Integration tests ─────────────────────────────────────────
+    //
+    // These exercise the full Stronghold encrypt/decrypt path (file I/O
+    // + NCKey memory protection).  Each `Stronghold::new` / `.save()`
+    // takes ~10-15 s in an *unoptimized debug* build, so the whole suite
+    // runs for several minutes.
+    //
+    // Run them explicitly:
+    //   cargo test auth::token_store -- --ignored --test-threads=1
+
+    #[test]
+    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
+    fn open_stronghold_creates_fresh_snapshot() {
+        let (_dir, paths) = setup_integration();
+
+        assert!(!paths.snapshot_path.exists(), "snapshot should not exist yet");
+        let stronghold = open_stronghold(&paths).expect("open should succeed");
+        let _client = load_client(&stronghold).expect("load client should succeed");
+        stronghold.save().expect("save should succeed");
+        assert!(paths.snapshot_path.exists(), "snapshot should exist after save");
+    }
+
+    #[test]
+    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
     fn set_and_get_stored_token_works() {
-        let (_dir, paths) = temp_paths();
-        sign_out_with_paths(&paths).expect("cleanup should work");
-        
-        let token = StoredToken {
-            access_token: "test_access_token".to_string(),
-            refresh_token: Some("test_refresh_token".to_string()),
-            expires_at: Some(9999999999),
-        };
+        let (_dir, paths) = setup_integration();
 
+        let token = sample_token();
         set_token_with_paths(&paths, token.clone()).expect("set should succeed");
-        let retrieved = get_stored_token_with_paths(&paths).expect("get should succeed");
 
+        // Clear cache so the next read goes through Stronghold.
+        clear_cached_token();
+
+        let retrieved = get_stored_token_with_paths(&paths).expect("get should succeed");
         assert!(retrieved.is_some());
         let stored = retrieved.unwrap();
         assert_eq!(stored.access_token, "test_access_token");
@@ -375,9 +490,10 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "integration test - requires Stronghold initialization"]
+    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
     fn sign_out_clears_token() {
-        let (_dir, paths) = temp_paths();
+        let (_dir, paths) = setup_integration();
+
         let token = StoredToken {
             access_token: "temp_token".to_string(),
             refresh_token: None,
@@ -388,29 +504,152 @@ mod tests {
         sign_out_with_paths(&paths).expect("sign out should succeed");
 
         let result = get_stored_token_with_paths(&paths).expect("get should succeed");
-        assert!(result.is_none());
+        assert!(result.is_none(), "token should be cleared after sign out");
     }
 
     #[test]
-    #[ignore = "integration test - requires Stronghold initialization"]
+    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
     fn get_stored_token_returns_none_when_empty() {
-        let (_dir, paths) = temp_paths();
-        sign_out_with_paths(&paths).expect("cleanup should work");
+        let (_dir, paths) = setup_integration();
+
         let result = get_stored_token_with_paths(&paths).expect("get should succeed");
         assert!(result.is_none());
     }
 
-    #[tokio::test]
-    #[ignore = "integration test - requires Stronghold initialization"]
-    async fn get_token_returns_valid_unexpired_token() {
-        let (_dir, paths) = temp_paths();
-        sign_out_with_paths(&paths).expect("cleanup should work");
-        
+    #[test]
+    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
+    fn cached_read_skips_stronghold() {
+        let (_dir, paths) = setup_integration();
+
+        let token = sample_token();
+        set_token_with_paths(&paths, token).expect("set should succeed");
+
+        // set_token_with_paths already caches the token.
+        let first = get_stored_token_with_paths(&paths)
+            .expect("first get should succeed")
+            .expect("token should exist");
+        assert_eq!(first.access_token, "test_access_token");
+
+        // Delete the snapshot file behind Stronghold's back.
+        // A second read must still succeed from the in-memory cache.
+        if paths.snapshot_path.exists() {
+            fs::remove_file(&paths.snapshot_path).expect("remove snapshot should succeed");
+        }
+
+        let second = get_stored_token_with_paths(&paths)
+            .expect("cached get should succeed")
+            .expect("cached token should exist");
+        assert_eq!(second.access_token, first.access_token);
+    }
+
+    #[test]
+    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
+    fn overwrite_token_updates_cache() {
+        let (_dir, paths) = setup_integration();
+
+        let first = StoredToken {
+            access_token: "first_token".to_string(),
+            refresh_token: None,
+            expires_at: None,
+        };
+        set_token_with_paths(&paths, first).expect("first set should succeed");
+
+        let read1 = get_stored_token_with_paths(&paths)
+            .expect("get should succeed")
+            .expect("token should exist");
+        assert_eq!(read1.access_token, "first_token");
+
+        let second = StoredToken {
+            access_token: "second_token".to_string(),
+            refresh_token: Some("new_refresh".to_string()),
+            expires_at: Some(1234567890),
+        };
+        set_token_with_paths(&paths, second).expect("second set should succeed");
+
+        let read2 = get_stored_token_with_paths(&paths)
+            .expect("get should succeed")
+            .expect("token should exist");
+        assert_eq!(read2.access_token, "second_token");
+        assert_eq!(read2.refresh_token, Some("new_refresh".to_string()));
+        assert_eq!(read2.expires_at, Some(1234567890));
+    }
+
+    #[test]
+    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
+    fn sign_out_then_set_round_trip() {
+        let (_dir, paths) = setup_integration();
+
+        let token = sample_token();
+        set_token_with_paths(&paths, token).expect("set should succeed");
+        sign_out_with_paths(&paths).expect("sign out should succeed");
+
+        let new_token = StoredToken {
+            access_token: "new_access".to_string(),
+            refresh_token: None,
+            expires_at: None,
+        };
+        set_token_with_paths(&paths, new_token).expect("re-set should succeed");
+
+        clear_cached_token();
+        let result = get_stored_token_with_paths(&paths)
+            .expect("get should succeed")
+            .expect("token should exist");
+        assert_eq!(result.access_token, "new_access");
+    }
+
+    #[test]
+    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
+    fn corrupt_snapshot_is_recovered() {
+        let (_dir, paths) = setup_integration();
+
+        let token = sample_token();
+        set_token_with_paths(&paths, token).expect("set should succeed");
+        clear_cached_token();
+
+        // Corrupt the snapshot file.
+        fs::write(&paths.snapshot_path, b"this is not a valid stronghold snapshot")
+            .expect("writing corrupt data should succeed");
+
+        // open_stronghold should detect the corruption and reset.
+        let stronghold = open_stronghold(&paths);
+        assert!(stronghold.is_ok(), "open should recover from corruption: {:?}", stronghold.err());
+
+        // After recovery, the vault is empty (token was lost with the corrupt snapshot).
+        let result = get_stored_token_with_paths(&paths).expect("get should succeed");
+        assert!(result.is_none(), "token should be gone after corruption recovery");
+    }
+
+    #[test]
+    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
+    fn load_client_creates_client_on_fresh_stronghold() {
+        let (_dir, paths) = setup_integration();
+
+        let stronghold = open_stronghold(&paths).expect("open should succeed");
+        let client = load_client(&stronghold);
+        assert!(client.is_ok(), "load_client should create a client on a fresh vault");
+    }
+
+    #[test]
+    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
+    fn load_client_reuses_existing_client() {
+        let (_dir, paths) = setup_integration();
+
+        let stronghold = open_stronghold(&paths).expect("open should succeed");
+
+        let _first = load_client(&stronghold).expect("first load should succeed");
+        let _second = load_client(&stronghold).expect("second load should succeed");
+    }
+
+    #[test]
+    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
+    fn get_token_returns_valid_unexpired_token() {
+        let (_dir, paths) = setup_integration();
+
         let future_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64
-            + 3600; // 1 hour from now
+            + 3600;
 
         let token = StoredToken {
             access_token: "valid_token".to_string(),
@@ -425,13 +664,64 @@ mod tests {
         assert_eq!(result, Some("valid_token".to_string()));
     }
 
-    #[tokio::test]
-    #[ignore = "integration test - requires Stronghold initialization"]
-    async fn get_token_returns_none_when_no_token_stored() {
-        let (_dir, paths) = temp_paths();
-        sign_out_with_paths(&paths).expect("cleanup should work");
-        
+    #[test]
+    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
+    fn get_token_returns_none_when_no_token_stored() {
+        let (_dir, paths) = setup_integration();
+
         let stored = get_stored_token_with_paths(&paths).expect("get_stored_token should work");
         assert!(stored.is_none());
+    }
+
+    #[test]
+    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
+    fn token_without_expiry_is_returned() {
+        let (_dir, paths) = setup_integration();
+
+        let token = StoredToken {
+            access_token: "no_expiry_token".to_string(),
+            refresh_token: None,
+            expires_at: None,
+        };
+        set_token_with_paths(&paths, token).expect("set should succeed");
+
+        clear_cached_token();
+        let result = get_stored_token_with_paths(&paths)
+            .expect("get should succeed")
+            .expect("token should exist");
+        assert_eq!(result.access_token, "no_expiry_token");
+        assert!(result.expires_at.is_none());
+    }
+
+    #[test]
+    #[ignore = "slow: ~10 s per Stronghold op in debug — run with: cargo test auth::token_store -- --ignored --test-threads=1"]
+    fn multiple_vaults_are_independent() {
+        ensure_test_key_material();
+        clear_cached_token();
+
+        let dir_a = TempDir::new().unwrap();
+        let paths_a = resolve_vault_paths(dir_a.path());
+
+        let dir_b = TempDir::new().unwrap();
+        let paths_b = resolve_vault_paths(dir_b.path());
+
+        let token_a = StoredToken {
+            access_token: "token_a".to_string(),
+            refresh_token: None,
+            expires_at: None,
+        };
+        set_token_with_paths(&paths_a, token_a).expect("set A should succeed");
+
+        // Clear cache so vault B reads from its own Stronghold.
+        clear_cached_token();
+        let result_b = get_stored_token_with_paths(&paths_b).expect("get B should succeed");
+        assert!(result_b.is_none(), "vault B should be empty");
+
+        // Reading vault A again (after cache clear) should return its token.
+        clear_cached_token();
+        let result_a = get_stored_token_with_paths(&paths_a)
+            .expect("get A should succeed")
+            .expect("vault A should have a token");
+        assert_eq!(result_a.access_token, "token_a");
     }
 }

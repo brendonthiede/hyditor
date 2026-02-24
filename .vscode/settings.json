@@ -1,0 +1,28 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^pkill -f 'node \\.\\*tauri dev' \\|\\| true && pkill -f 'node \\.\\*vite dev' \\|\\| true && pkill -f 'target/debug/hyditor' \\|\\| true$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^secret-tool search service io\\.github\\.brendonthiede\\.hyditor 2>&1 \\| head -10$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^cd /home/brendon/code/github/brendonthiede/hyditor/src-tauri && source \\.\\./env\\.dev && cargo build 2>&1 \\| tail -5$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^pgrep -f 'target/debug/hyditor' \\| head -1$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    },
+    "chat.mcp.serverSampling": {
+        "hyditor/.vscode/mcp.json: tauri-mcp": {
+            "allowedModels": [
+                "copilot/gpt-5.3-codex",
+                "copilot/claude-opus-4.6"
+            ]
+        }
+    }
+}

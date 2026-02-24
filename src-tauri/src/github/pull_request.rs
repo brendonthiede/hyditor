@@ -98,7 +98,9 @@ pub async fn create_pr(
 
 #[tauri::command]
 pub async fn list_prs(app: tauri::AppHandle, owner: String, repo: String) -> Result<Vec<PullRequestInfo>, String> {
+    let t0 = std::time::Instant::now();
     let token = get_access_token(&app).await?;
+    eprintln!("[list_prs] get_access_token took {:.3}s", t0.elapsed().as_secs_f64());
     let client = reqwest::Client::new();
     let url = format!("https://api.github.com/repos/{owner}/{repo}/pulls?state=open&per_page=100");
 
@@ -134,7 +136,7 @@ pub async fn list_prs(app: tauri::AppHandle, owner: String, repo: String) -> Res
         .await
         .map_err(|err| format!("invalid list pull requests response: {err}"))?;
 
-    Ok(pulls
+    let result: Vec<PullRequestInfo> = pulls
         .into_iter()
         .map(|pr| PullRequestInfo {
             number: pr.number,
@@ -142,5 +144,8 @@ pub async fn list_prs(app: tauri::AppHandle, owner: String, repo: String) -> Res
             state: pr.state,
             url: pr.html_url,
         })
-        .collect())
+        .collect();
+
+    eprintln!("[list_prs] total took {:.3}s ({} PRs)", t0.elapsed().as_secs_f64(), result.len());
+    Ok(result)
 }

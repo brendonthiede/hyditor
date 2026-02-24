@@ -31,6 +31,10 @@
   <h1>Hyditor</h1>
   <p>Secure Jekyll editor for GitHub Pages.</p>
 
+  {#if $authState.status === 'loading'}
+    <p class="loading">Checking session…</p>
+  {/if}
+
   {#if $authState.status === 'pending'}
     <div class="device-flow">
       {#if $authState.verificationUri}
@@ -66,8 +70,14 @@
     {/if}
   {/if}
 
-  <button on:click={beginAuth} disabled={$authState.status === 'pending'}>
-    {$authState.status === 'pending' ? 'Waiting for authorization…' : 'Sign in with GitHub'}
+  <button on:click={beginAuth} disabled={$authState.status === 'pending' || $authState.status === 'loading'}>
+    {#if $authState.status === 'loading'}
+      Initializing…
+    {:else if $authState.status === 'pending'}
+      Waiting for authorization…
+    {:else}
+      Sign in with GitHub
+    {/if}
   </button>
 </section>
 
@@ -123,5 +133,11 @@
     margin: 0;
     font-size: 0.8rem;
     opacity: 0.75;
+  }
+
+  .loading {
+    margin: 0;
+    opacity: 0.7;
+    font-style: italic;
   }
 </style>
