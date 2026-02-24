@@ -67,14 +67,38 @@ describe('jekyllUrlForFile', () => {
     ).toBe(`${BASE}/my/custom/path/`);
   });
 
-  it('maps a _drafts file to a dated permalink using today\'s UTC date', () => {
+  it('maps a _drafts file to a dated permalink using today\'s local date', () => {
     const today = new Date();
-    const y = today.getUTCFullYear();
-    const m = String(today.getUTCMonth() + 1).padStart(2, '0');
-    const d = String(today.getUTCDate()).padStart(2, '0');
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
     expect(
       jekyllUrlForFile(BASE, REPO, `${REPO}/_drafts/my-draft-post.md`)
     ).toBe(`${BASE}/${y}/${m}/${d}/my-draft-post.html`);
+  });
+
+  it('strips date prefix from a date-prefixed draft filename', () => {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    expect(
+      jekyllUrlForFile(BASE, REPO, `${REPO}/_drafts/2021-03-05-get-started-with-shipa.md`)
+    ).toBe(`${BASE}/${y}/${m}/${d}/get-started-with-shipa.html`);
+  });
+
+  it('uses local time when front matter date contains a timezone offset', () => {
+    // Jekyll (Ruby) interprets front matter dates in local time.
+    // A UTC datetime like 2019-06-16T02:35:18.594Z may be June 15 locally.
+    const fmDate = '2019-06-16T02:35:18.594Z';
+    const d = new Date(fmDate);
+    const y = String(d.getFullYear());
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    const dy = String(d.getDate()).padStart(2, '0');
+    const content = `---\ndate: "${fmDate}"\ncategories: [devops]\n---\n`;
+    expect(
+      jekyllUrlForFile(BASE, REPO, `${REPO}/_posts/2019-06-15-openstack-on-azure.md`, content, 'date')
+    ).toBe(`${BASE}/devops/${y}/${mo}/${dy}/openstack-on-azure.html`);
   });
 
   it('returns baseUrl for files in non-served underscore directories', () => {

@@ -165,6 +165,7 @@ cd src-tauri && cargo test -- --test-threads=1
 - Explore options for not having to login every time that the application starts up. Currently I need to login every time I start the application, which is a bit of a pain.
 - Add a filter for the repository list to handle users with many repos (search + pagination + realtime filtering).
 - When showing the preview, have scrollbars to ensure that the window is the selected size, but the user can scroll to see the full preview if it is larger than the window, in order to make sure the reactive layout is preserved.
+- There have to be scrollbar(s) in the editor window. By default we are word wrapping, so only vertical scrollbars are needed, but if we add a toggle for word wrap in the future, horizontal scrollbars will be needed as well.
 - If a file is only different in whitespace, ignore it in the git status and preview (optional toggle for showing whitespace diffs). Do not allow whitespace-only changes to be staged or committed.
 - Add a filter to the file list to hide files that are not relevant to Jekyll sites (e.g. node_modules, vendor, .bundle, etc.) and/or binary files that cannot be previewed (optional toggle for showing all files) and to filter to matching names.
 - Manual testing and validation of implemented features with various GitHub accounts, repo configurations, and edge cases (token expiry, revoked tokens, 2FA accounts, large repos, etc.)

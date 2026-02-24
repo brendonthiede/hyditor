@@ -157,21 +157,41 @@ export function jekyllUrlForFile(
     if (!postMatch) return baseUrl;
     [, year, month, day, titleSlug] = postMatch as [string, string, string, string, string];
   } else {
-    // Draft: use today's UTC date
+    // Draft: use today's local date (Jekyll uses local time)
     const today = new Date();
-    year = String(today.getUTCFullYear());
-    month = String(today.getUTCMonth() + 1).padStart(2, '0');
-    day = String(today.getUTCDate()).padStart(2, '0');
+    year = String(today.getFullYear());
+    month = String(today.getMonth() + 1).padStart(2, '0');
+    day = String(today.getDate()).padStart(2, '0');
     const draftMatch = rel.match(/^_drafts\/(.+)\.md$/);
     if (!draftMatch) return baseUrl;
-    titleSlug = draftMatch[1] as string;
+    // Strip an optional leading date prefix (YYYY-MM-DD-) so drafts named like
+    // posts get the same slug treatment Jekyll applies.
+    titleSlug = (draftMatch[1] as string).replace(/^\d{4}-\d{2}-\d{2}-/, '');
   }
 
   // Front matter can override date and slug.
-  if (typeof fm['date'] === 'string') {
-    const dmatch = fm['date'].match(/(\d{4})-(\d{2})-(\d{2})/);
-    if (dmatch) {
-      [, year, month, day] = dmatch as [string, string, string, string];
+  // Jekyll (Ruby) interprets dates in local time, so we must do the same.
+  const rawDate = fm['date'];
+  if (rawDate instanceof Date) {
+    // YAML library already parsed the value as a Date object.
+    year = String(rawDate.getFullYear());
+    month = String(rawDate.getMonth() + 1).padStart(2, '0');
+    day = String(rawDate.getDate()).padStart(2, '0');
+  } else if (typeof rawDate === 'string') {
+    if (/T|\d{2}:\d{2}/.test(rawDate)) {
+      // Date+time string with optional timezone — parse and read in local time.
+      const d = new Date(rawDate);
+      if (!isNaN(d.getTime())) {
+        year = String(d.getFullYear());
+        month = String(d.getMonth() + 1).padStart(2, '0');
+        day = String(d.getDate()).padStart(2, '0');
+      }
+    } else {
+      // Date-only string (YYYY-MM-DD): extract literally to avoid UTC-midnight shift.
+      const dmatch = rawDate.match(/(\d{4})-(\d{2})-(\d{2})/);
+      if (dmatch) {
+        [, year, month, day] = dmatch as [string, string, string, string];
+      }
     }
   }
   const slug = typeof fm['slug'] === 'string' ? fm['slug'] : titleSlug;

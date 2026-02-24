@@ -1,6 +1,5 @@
 <script lang="ts">
   import { activeRepo } from '$lib/stores/repo';
-  import { editorState } from '$lib/stores/editor';
   import { previewState, setPreviewMode, setViewportPreset } from '$lib/stores/preview';
 </script>
 
@@ -17,7 +16,7 @@
     class:active={$previewState.mode === 'jekyll'}
     disabled={$previewState.loading || !$activeRepo}
     on:click={() => {
-      void setPreviewMode('jekyll', $activeRepo?.localPath, $editorState.currentFile, $editorState.currentContent);
+      void setPreviewMode('jekyll', $activeRepo?.localPath);
     }}
   >
     Full Preview
