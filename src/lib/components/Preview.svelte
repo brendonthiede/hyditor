@@ -2,13 +2,18 @@
   import { onDestroy } from 'svelte';
   import ViewportToolbar from '$lib/components/ViewportToolbar.svelte';
   import { editorState } from '$lib/stores/editor';
-  import { previewState, stopJekyllPreview } from '$lib/stores/preview';
+  import { previewState, stopJekyllPreview, navigateToCurrentFile } from '$lib/stores/preview';
   import { parseFrontmatter } from '$lib/utils/frontmatter';
   import { renderMarkdown } from '$lib/utils/markdown';
 
   $: parsed = parseFrontmatter($editorState.currentContent);
   $: rendered = renderMarkdown(parsed.content);
   $: frontmatterEntries = Object.entries(parsed.data);
+
+  // When in Jekyll mode, keep the iframe pointed at the current file.
+  $: if ($previewState.mode === 'jekyll') {
+    navigateToCurrentFile($editorState.currentFile);
+  }
 
   onDestroy(() => {
     void stopJekyllPreview();

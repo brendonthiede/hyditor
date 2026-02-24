@@ -67,6 +67,49 @@ fn kill_process(child: &mut Child) -> io::Result<()> {
     Ok(())
 }
 
+fn port_in_use() -> bool {
+    let addr: SocketAddr = format!("{PREVIEW_HOST}:{PREVIEW_PORT}")
+        .parse()
+        .expect("static address is valid");
+    TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok()
+}
+
+/// Kill any process currently bound to PREVIEW_PORT and wait for it to release
+/// the port before returning.  This handles leftover Jekyll processes from
+/// previous app sessions that are no longer tracked by ACTIVE_JEKYLL.
+fn ensure_port_free() -> Result<(), String> {
+    if !port_in_use() {
+        return Ok(());
+    }
+
+    log_preview(&format!(
+        "port {PREVIEW_PORT} is already in use — killing occupying process"
+    ));
+
+    // fuser -k sends SIGKILL to every process bound to the port.
+    let _ = Command::new("bash")
+        .args([
+            "-c",
+            &format!("fuser -k {PREVIEW_PORT}/tcp 2>/dev/null || true"),
+        ])
+        .status();
+
+    // Wait up to 5 s for the port to be released.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(200));
+        if !port_in_use() {
+            log_preview("port is now free");
+            return Ok(());
+        }
+    }
+
+    Err(format!(
+        "Port {PREVIEW_PORT} is still in use after attempting to free it. \
+         Kill the process manually and try again."
+    ))
+}
+
 fn shell_command_exists(name: &str) -> bool {
     Command::new("bash")
         .args(["-l", "-c", &format!("command -v {name} >/dev/null 2>&1")])
@@ -111,8 +154,10 @@ fn start_jekyll_process(repo_path: &Path) -> Result<Child, String> {
         bundle_install(repo_path)?;
     }
 
+    ensure_port_free()?;
+
     let jekyll_args = format!(
-        "serve --host {PREVIEW_HOST} --port {PREVIEW_PORT} --baseurl \"\""
+        "serve --host {PREVIEW_HOST} --port {PREVIEW_PORT} --baseurl \"\" --drafts --livereload"
     );
     let shell_cmd = if use_bundle {
         format!("bundle exec jekyll {jekyll_args}")
