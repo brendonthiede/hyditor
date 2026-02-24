@@ -1,8 +1,8 @@
 import { get, writable } from 'svelte/store';
 import { listRepos } from '$lib/tauri/github';
 import { cloneRepo, status } from '$lib/tauri/git';
-import { readFile, readTree } from '$lib/tauri/fs';
-import { editorState, fileTree } from '$lib/stores/editor';
+import { readFile, readTree, writeFile } from '$lib/tauri/fs';
+import { fileTree, setCurrentFileContent } from '$lib/stores/editor';
 
 export type RepoInfo = {
   owner: string;
@@ -65,13 +65,20 @@ export async function openRepoFile(relativePath: string, localPathOverride?: str
   const fullPath = joinRepoPath(basePath, relativePath);
   try {
     const content = await readFile(fullPath);
-    editorState.set({
-      currentFile: relativePath,
-      currentContent: content
-    });
+    setCurrentFileContent(relativePath, content);
   } catch {
     return;
   }
+}
+
+export async function saveRepoFile(relativePath: string, content: string, localPathOverride?: string): Promise<void> {
+  const basePath = localPathOverride ?? get(activeRepo)?.localPath;
+  if (!basePath) {
+    return;
+  }
+
+  const fullPath = joinRepoPath(basePath, relativePath);
+  await writeFile(fullPath, content);
 }
 
 export async function loadRepos(): Promise<void> {

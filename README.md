@@ -72,6 +72,11 @@ Note: The app embeds a public `client_id` for Device Flow. This is not a secret 
 - ✅ GitHub App Device Flow authentication with token refresh
 - ✅ Stronghold-backed encrypted token storage with key generation
 - ✅ Authenticated GitHub repository listing + clone-to-cache flow (git2)
+- ✅ CodeMirror 6 editor with language switching (Markdown, YAML, HTML/Liquid)
+- ✅ Hybrid preview pipeline (instant Markdown render + Jekyll iframe toggle)
+- ✅ Front matter display in instant preview header
+- ✅ Responsive viewport simulation (Desktop/Tablet/Mobile presets)
+- ✅ Debounced editor autosave to scoped filesystem
 
 ## Tests
 
@@ -117,5 +122,7 @@ cd src-tauri && cargo test auth::token_store -- --ignored
 
 ## Next Work
 
-- Implement CodeMirror integration and hybrid preview pipeline
+- Implement git status, staging, commit, and push UI with file selectors
+- Implement branch management and PR workflow UI components
+- Add FrontMatterForm structured editor (Phase 3)
 - OS keychain-backed key derivation (instead of local key file) for enhanced security
