@@ -90,6 +90,8 @@ Note: The Device Flow `client_id` is public (not a secret). `HYDITOR_GITHUB_CLIE
 - ✅ Performance: startup `get_token` skips Stronghold when no snapshot file exists (or snapshot is zero-bytes/corrupt); corrupted snapshots are removed without retrying the expensive key-derivation; all HTTP clients use 15-second timeouts to prevent indefinite hangs during token refresh
 - ✅ Performance: `[profile.dev.package."*"] opt-level = 2` in Cargo.toml compiles all dependency crates with optimizations even in debug builds — reduces Stronghold operations (Argon2 key derivation + XChaCha20-Poly1305 save) from ~48 s to ~1 s; all 20 token_store integration tests now run in the default `cargo test` suite (no longer `#[ignore]`d)
 - ✅ Auth UX: per-second countdown timer between polls shows "Waiting for authorization — next check in Ns" instead of raw API status strings
+- ✅ `.git` directory excluded from file tree and scoped filesystem operations (backend `filter_entry` + walkdir skip)
+- ✅ Collapsible folder tree in file panel (hierarchical view with toggle chevrons)
 
 ## Contributor Workflow
 
@@ -157,8 +159,6 @@ cd src-tauri && cargo test -- --test-threads=1
 
 ## Next Work
 
-- Exclude the .git folder from the file tree and editor operations to prevent accidental modifications and improve performance.
-- Make folders collapsible in the file tree.
 - Fix "Full Preview" operation. Currently fails to start Jekyll. Frontend shows "Failed to start Jekyll preview." and the process prints "Jekyll failed to become ready: Jekyll preview did not become ready in time." to the terminal.
 - Manual testing and validation of implemented features with various GitHub accounts, repo configurations, and edge cases (token expiry, revoked tokens, 2FA accounts, large repos, etc.)
 - Define next roadmap item

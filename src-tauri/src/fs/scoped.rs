@@ -24,6 +24,12 @@ pub fn read_tree(repo_path: String) -> Result<Vec<TreeEntry>, String> {
     for entry in WalkDir::new(&repo)
         .follow_links(false)
         .into_iter()
+        .filter_entry(|e| {
+            e.file_name()
+                .to_str()
+                .map(|s| s != ".git")
+                .unwrap_or(true)
+        })
         .filter_map(|e| e.ok())
     {
         let path = entry.path();
@@ -82,6 +88,25 @@ mod tests {
 
         assert!(paths.contains(&"_posts".to_string()));
         assert!(paths.contains(&"_posts/entry.md".to_string()));
+    }
+
+    #[test]
+    fn read_tree_excludes_dot_git_directory() {
+        let root = tempdir().expect("temp dir should be created");
+        let git_dir = root.path().join(".git");
+        fs::create_dir_all(git_dir.join("objects")).expect(".git/objects should be created");
+        fs::write(git_dir.join("HEAD"), "ref: refs/heads/main").expect("HEAD should be written");
+        fs::write(git_dir.join("objects/pack"), "").expect("pack file should be written");
+        let posts_dir = root.path().join("_posts");
+        fs::create_dir_all(&posts_dir).expect("_posts should be created");
+        fs::write(posts_dir.join("entry.md"), "# test").expect("entry should be written");
+
+        let entries = read_tree(root.path().to_string_lossy().to_string()).expect("tree should be read");
+        let paths: Vec<String> = entries.iter().map(|e| e.path.clone()).collect();
+
+        assert!(paths.contains(&"_posts".to_string()));
+        assert!(paths.contains(&"_posts/entry.md".to_string()));
+        assert!(!paths.iter().any(|p| p.starts_with(".git")), "no .git entries should appear: {:?}", paths);
     }
 
     #[test]
