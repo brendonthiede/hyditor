@@ -60,6 +60,107 @@ If `Sign in with GitHub` reports client ID not configured, copy `.env.example` t
 
 Note: The Device Flow `client_id` is public (not a secret). `HYDITOR_GITHUB_CLIENT_ID` overrides the embedded value for development.
 
+## Developing over SSH (Windows)
+
+Tauri requires a display server. When connecting from Windows via SSH, a forwarded X11 display is needed. The following setup was tested with Windows Terminal + VS Code Remote SSH connecting to a Linux (Mint) dev machine.
+
+### 1. Install VcXsrv on Windows
+
+Download and install [VcXsrv](https://sourceforge.net/projects/vcxsrv/). Launch **XLaunch** with these settings:
+
+- Window mode: **Multiple windows**
+- Client: **Start no client**
+- Extra settings: check **Disable access control**
+
+Save the config and place the `.xlaunch` file in `shell:startup` so it auto-starts on login.
+
+Example saved config:
+
+```xml
+<XLaunch WindowMode="MultiWindow" ClientMode="NoClient" LocalClient="False"
+  Display="-1" Clipboard="True" ClipboardPrimary="True" Wgl="True"
+  DisableAC="True" XDMCPTerminate="False"/>
+```
+
+### 2. Update `~/.ssh/config` on Windows
+
+Add X11 forwarding to the host entry so both Windows Terminal and VS Code Remote SSH use it:
+
+```
+Host brendon-mint
+    User            brendon
+    HostName        192.168.1.48
+    IdentityFile    ~/.ssh/id_ed25519
+    IdentitiesOnly  yes
+    ForwardX11      yes
+    ForwardX11Trusted yes
+```
+
+### 3. Auto-set `DISPLAY` for VS Code Remote SSH sessions
+
+VS Code Remote SSH does not forward X11 — `$DISPLAY` is empty in the integrated terminal. Add the following to **both** `~/.bashrc` and `~/.profile` on the Linux machine so `DISPLAY` is set automatically from the client IP in `$SSH_CLIENT`:
+
+```bash
+# Auto-set DISPLAY for SSH sessions when not already set (e.g. VS Code Remote SSH)
+# Requires VcXsrv running on the Windows client with "Disable access control" checked.
+if [ -n "$SSH_CLIENT" ] && [ -z "$DISPLAY" ]; then
+    export DISPLAY=$(echo "$SSH_CLIENT" | awk '{print $1}'):0
+fi
+```
+
+Windows Terminal sessions with `-X` forwarding already have `DISPLAY` set by SSH, so this block is a no-op for them.
+
+### 4. Prevent GUI browser launch over X11
+
+When the GitHub Device Flow auth link is clicked, the app calls `xdg-open` which launches Firefox over the forwarded X display. Firefox is too heavy for VcXsrv and will crash it.
+
+Create `~/.local/bin/xdg-open-wrapper` to intercept HTTP/HTTPS URLs:
+
+```bash
+#!/bin/bash
+# SSH-safe xdg-open wrapper. Intercepts http/https URLs to avoid launching a
+# GUI browser over X11 forwarding, which crashes lightweight X servers like VcXsrv.
+# The URL is printed to the terminal and saved to /tmp/hyditor-open-url.txt.
+URL="$1"
+if [[ "$URL" == http://* ]] || [[ "$URL" == https://* ]]; then
+    echo "" >&2
+    echo "============================================" >&2
+    echo "  Open this URL in your Windows browser:  " >&2
+    echo "  $URL" >&2
+    echo "============================================" >&2
+    echo "" >&2
+    echo "$URL" > /tmp/hyditor-open-url.txt
+    exit 0
+fi
+exec /usr/bin/xdg-open "$@"
+```
+
+```bash
+chmod +x ~/.local/bin/xdg-open-wrapper
+```
+
+Then add to `~/.profile` to activate it for all SSH sessions:
+
+```bash
+# Use lightweight xdg-open wrapper in SSH sessions to avoid launching GUI browser over X11
+if [ -n "$SSH_CLIENT" ]; then
+    export BROWSER="$HOME/.local/bin/xdg-open-wrapper"
+fi
+```
+
+### 5. Running the app
+
+For the first terminal in a new session (or always to be safe):
+
+```bash
+source ~/.profile
+npm run tauri:dev
+```
+
+The Hyditor window will appear on the Windows desktop via VcXsrv.
+
+When the auth screen shows a verification link, **do not click it** — the device code is already copied to your clipboard. The terminal will print the URL; open it manually in your Windows browser and paste the code.
+
 ## Security Direction
 
 - No tokens persisted in plaintext
