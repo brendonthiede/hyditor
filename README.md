@@ -84,6 +84,7 @@ Note: The Device Flow `client_id` is public (not a secret). `HYDITOR_GITHUB_CLIE
 - ✅ Security hardening: explicit local sign-out + revocation guidance UX for refresh-token invalidation edge cases
 - ✅ Security hardening: proactive expired-token detection in GitHub/repo workflows with guided re-auth prompts
 - ✅ Auth resilience: device verification links open via system browser integration and corrupted Stronghold snapshot recovery auto-resets local auth state
+- ✅ Auth UX: `Sign in with GitHub` now auto-opens the verification URI in the system browser and copies the device code to clipboard
 
 ## Contributor Workflow
 
@@ -142,6 +143,7 @@ cd src-tauri && cargo test auth::token_store -- --ignored
 
 - The GitHub Device Flow `client_id` is public and safe to embed.
 - `HYDITOR_GITHUB_CLIENT_ID` overrides the embedded value for development.
+  - `HYDITOR_GITHUB_CLIENT_ID` can be set in env.dev so that it can be sourced easily by automation.
 - Tokens stored in Stronghold encrypted vault (XChaCha20-Poly1305 encryption) at `~/.local/share/hyditor/auth.stronghold`.
 - Stronghold unlock material is persisted in the OS keychain (`io.github.brendonthiede.hyditor` / `stronghold-master-key`) and hashed with app context to derive the runtime vault key.
 - Existing `~/.local/share/hyditor/stronghold.key` entries are migrated to the keychain on first access and the local key file is removed.
@@ -150,7 +152,9 @@ cd src-tauri && cargo test auth::token_store -- --ignored
 
 ## Next Work
 
+- Determine why get_token and get_prs take ~90 seconds each.
+- Make folders collapsible in the file tree.
+- Fix "Full Preview" operation. Currently fails to start Jekyll.
 - Manual testing and validation of implemented features with various GitHub accounts, repo configurations, and edge cases (token expiry, revoked tokens, 2FA accounts, large repos, etc.)
-- For auth flow, copy the device code to the clipboard and open the system browser to the verification URI when `Sign in with GitHub` is clicked.
 - During auth, showing the last poll status, have a countdown timer for the next poll (this assumes that we are polling at a set interval)
 - Define next roadmap item
