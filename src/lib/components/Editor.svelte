@@ -5,6 +5,7 @@
   import { markdown } from '@codemirror/lang-markdown';
   import { yaml } from '@codemirror/lang-yaml';
   import { html } from '@codemirror/lang-html';
+  import FrontMatterForm from '$lib/components/FrontMatterForm.svelte';
   import {
     editorState,
     markCurrentContentSaved,
@@ -118,6 +119,7 @@
       <p>No file selected</p>
     {/if}
   </header>
+  <FrontMatterForm />
   <div bind:this={editorHost} class="editor-host" aria-label="Code editor"></div>
 </section>
 
@@ -125,7 +127,7 @@
   .editor {
     height: 100%;
     display: grid;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto auto 1fr;
     padding: 0.75rem;
     gap: 0.5rem;
   }

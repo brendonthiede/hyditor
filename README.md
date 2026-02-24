@@ -80,6 +80,7 @@ Note: The app embeds a public `client_id` for Device Flow. This is not a secret 
 - ✅ Git status, staging, commit, and push UI with file selectors
 - ✅ Branch management UI (list/switch/create) with local checkout refresh
 - ✅ Pull request workflow UI (list/create) backed by GitHub API commands
+- ✅ FrontMatterForm structured editor with add/edit/remove field workflow (Phase 3)
 
 ## Contributor Workflow
 
@@ -143,5 +144,4 @@ cd src-tauri && cargo test auth::token_store -- --ignored
 
 ## Next Work
 
-- Add FrontMatterForm structured editor (Phase 3)
 - OS keychain-backed key derivation (instead of local key file) for enhanced security
