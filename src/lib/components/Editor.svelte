@@ -176,6 +176,8 @@
   .editor-host :global(.cm-scroller) {
     font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
     line-height: 1.45;
+    overflow-y: auto;
+    overflow-x: hidden; /* word-wrap is on by default; update to auto when a wrap toggle is added */
   }
 
   .editor-host :global(.cm-gutters) {

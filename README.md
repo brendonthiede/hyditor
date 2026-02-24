@@ -200,6 +200,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ Full Preview loads by default when a repository is opened; "Instant" is available as a toggle for users who prefer faster previews without Jekyll features; toolbar button order updated (Full Preview first)
 - ✅ Repository list filter: realtime search by owner/name/description with frontend pagination (20 per page) so users with many repos can quickly find the repo they want
 - ✅ Preview viewport scrollbars: the preview canvas scrolls when the selected viewport (Desktop/Tablet/Mobile) is larger than the panel, preserving the exact chosen width/height so responsive breakpoints are rendered correctly
+- ✅ Editor scrollbar: vertical scrollbar enabled on the CodeMirror scroller (`overflow-y: auto`); horizontal scroll suppressed while word-wrap is on (`overflow-x: hidden`) — comment in source notes where to update this when a word-wrap toggle is added
 
 ## Contributor Workflow
 
@@ -268,7 +269,6 @@ cd src-tauri && cargo test -- --test-threads=1
 
 ## Next Work
 
-- There have to be scrollbar(s) in the editor window. By default we are word wrapping, so only vertical scrollbars are needed, but if we add a toggle for word wrap in the future, horizontal scrollbars will be needed as well.
 - If a file is only different in whitespace, ignore it in the git status and preview (optional toggle for showing whitespace diffs). Do not allow whitespace-only changes to be staged or committed.
 - Add a filter to the file list to hide files that are not relevant to Jekyll sites (e.g. node_modules, vendor, .bundle, etc.) and/or binary files that cannot be previewed (optional toggle for showing all files) and to filter to matching names.
 - Manual testing and validation of implemented features with various GitHub accounts, repo configurations, and edge cases (token expiry, revoked tokens, 2FA accounts, large repos, etc.)
