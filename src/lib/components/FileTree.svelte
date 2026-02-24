@@ -12,6 +12,7 @@
 </script>
 
 <script lang="ts">
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import { editorState, fileTree } from '$lib/stores/editor';
   import { openRepoFile } from '$lib/stores/repo';
 
@@ -20,7 +21,7 @@
 
   function buildTree(items: { path: string; is_dir: boolean }[]): TreeNode[] {
     const root: TreeNode[] = [];
-    const dirMap = new Map<string, TreeNode>();
+    const dirMap = new SvelteMap<string, TreeNode>();
 
     // Sort by path so parent dirs are created before children
     const sorted = [...items].sort((a, b) => a.path.localeCompare(b.path));
@@ -58,7 +59,7 @@
 
   function toggleDir(path: string) {
     collapsedDirs.update((dirs) => {
-      const next = new Set(dirs);
+      const next = new SvelteSet(dirs);
       if (next.has(path)) next.delete(path);
       else next.add(path);
       return next;
