@@ -12,6 +12,9 @@ use tauri::AppHandle;
 use tauri::Manager;
 use tauri_plugin_stronghold::stronghold::Stronghold;
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 /// In-memory token cache.  Reading from the Stronghold snapshot is the most
 /// expensive operation in the auth path (key derivation + file I/O +
 /// decryption).  By caching the `StoredToken` after the first successful read,
@@ -49,6 +52,12 @@ pub struct StoredToken {
 
 const STRONGHOLD_SNAPSHOT: &str = "auth.stronghold";
 const LEGACY_STRONGHOLD_KEY: &str = "stronghold.key";
+/// Backup key file alongside the snapshot.  Used as a fallback when the OS
+/// keychain is unavailable (e.g. locked session, missing secret-service daemon,
+/// or a keyring crate backend that silently drops writes).  The file is written
+/// with 0600 permissions so only the owning user can read it.  It is created
+/// whenever new key material is generated and kept in sync with the keychain.
+const BACKUP_KEY_FILE: &str = "auth.key";
 const STRONGHOLD_CLIENT: &str = "hyditor-auth";
 const STRONGHOLD_TOKEN_KEY: &str = "github_token";
 const KEYCHAIN_SERVICE: &str = "io.github.brendonthiede.hyditor";
@@ -65,12 +74,14 @@ pub fn auth_expired_error(message: &str) -> String {
 struct VaultPaths {
     snapshot_path: PathBuf,
     legacy_key_path: PathBuf,
+    backup_key_path: PathBuf,
 }
 
 fn resolve_vault_paths(base_dir: &Path) -> VaultPaths {
     VaultPaths {
         snapshot_path: base_dir.join(STRONGHOLD_SNAPSHOT),
         legacy_key_path: base_dir.join(LEGACY_STRONGHOLD_KEY),
+        backup_key_path: base_dir.join(BACKUP_KEY_FILE),
     }
 }
 
@@ -121,43 +132,110 @@ fn derive_stronghold_key(material: &[u8]) -> Vec<u8> {
     hasher.finalize().to_vec()
 }
 
+/// Persist key material to the local backup file with owner-only permissions.
+fn save_backup_key(paths: &VaultPaths, material: &[u8]) {
+    match fs::write(&paths.backup_key_path, material) {
+        Ok(()) => {
+            // Restrict to owner read/write only (0600).
+            #[cfg(unix)]
+            {
+                let _ = fs::set_permissions(
+                    &paths.backup_key_path,
+                    fs::Permissions::from_mode(0o600),
+                );
+            }
+            eprintln!("[Keychain] Saved key material backup file");
+        }
+        Err(err) => {
+            eprintln!("[Keychain] Warning: failed to write backup key file: {err}");
+        }
+    }
+}
+
+/// Load key material from the local backup file.
+fn load_backup_key(paths: &VaultPaths) -> Option<Vec<u8>> {
+    if !paths.backup_key_path.exists() {
+        return None;
+    }
+    match fs::read(&paths.backup_key_path) {
+        Ok(data) if !data.is_empty() => {
+            eprintln!("[Keychain] Loaded key material from backup file");
+            Some(data)
+        }
+        _ => None,
+    }
+}
+
 fn load_or_create_key_material(paths: &VaultPaths) -> Result<Vec<u8>, String> {
+    // Fast path: in-memory cache populated after first successful read.
     if let Some(existing) = KEY_MATERIAL_CACHE.get() {
         return Ok(existing.clone());
     }
 
     let entry = keychain_entry()?;
 
+    // 1. Try the OS keychain (most secure path).
     match entry.get_password() {
         Ok(existing) => {
             let material = decode_key_material(&existing)?;
+            eprintln!("[Keychain] Loaded key material from OS keychain");
             let _ = KEY_MATERIAL_CACHE.set(material.clone());
-            Ok(material)
+            return Ok(material);
         }
         Err(keyring::Error::NoEntry) => {
-            let material = match load_legacy_key(&paths.legacy_key_path)? {
-                Some(legacy_key) => legacy_key,
-                None => {
-                    let mut random = vec![0u8; 32];
-                    OsRng.fill_bytes(&mut random);
-                    random
-                }
-            };
-
-            let encoded = base64::engine::general_purpose::STANDARD.encode(&material);
-            entry
-                .set_password(&encoded)
-                .map_err(|err| format!("failed to persist key material in keychain: {err}"))?;
-
-            if paths.legacy_key_path.exists() {
-                let _ = fs::remove_file(&paths.legacy_key_path);
-            }
-
-            let _ = KEY_MATERIAL_CACHE.set(material.clone());
-            Ok(material)
+            eprintln!("[Keychain] No keychain entry found; trying backup file");
         }
-        Err(err) => Err(format!("failed to read key material from keychain: {err}")),
+        Err(err) => {
+            // The keychain daemon may be locked or unavailable.  Fall through
+            // to the backup file rather than surfacing a hard error to the user.
+            eprintln!("[Keychain] get_password error ({err}); trying backup file");
+        }
     }
+
+    // 2. Fall back to the local backup key file.  This covers the common case
+    //    where the OS keychain is present but doesn't surface a persistent entry
+    //    across sessions (e.g. GNOME Keyring not unlocked at startup, or the
+    //    keyring crate backend silently dropping writes on some distros).
+    if let Some(material) = load_backup_key(paths) {
+        // Best-effort re-population of the keychain so future reads are faster.
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&material);
+        match entry.set_password(&encoded) {
+            Ok(()) => eprintln!("[Keychain] Restored key material to OS keychain from backup"),
+            Err(err) => eprintln!("[Keychain] Could not restore to OS keychain: {err}"),
+        }
+        let _ = KEY_MATERIAL_CACHE.set(material.clone());
+        return Ok(material);
+    }
+
+    // 3. Migrate from the legacy raw key file (pre-keychain installs).
+    if let Ok(Some(legacy)) = load_legacy_key(&paths.legacy_key_path) {
+        eprintln!("[Keychain] Migrating legacy key file to keychain + backup");
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&legacy);
+        let _ = entry.set_password(&encoded);
+        save_backup_key(paths, &legacy);
+        let _ = fs::remove_file(&paths.legacy_key_path);
+        let _ = KEY_MATERIAL_CACHE.set(legacy.clone());
+        return Ok(legacy);
+    }
+
+    // 4. No existing key found anywhere — generate fresh key material and
+    //    persist it to both the keychain and the backup file.  This is a
+    //    one-time cost on first install (or after a full sign-out+key-clear).
+    eprintln!("[Keychain] Generating new key material");
+    let mut material = vec![0u8; 32];
+    OsRng.fill_bytes(&mut material);
+
+    let encoded = base64::engine::general_purpose::STANDARD.encode(&material);
+    match entry.set_password(&encoded) {
+        Ok(()) => eprintln!("[Keychain] Saved new key material to OS keychain"),
+        Err(err) => eprintln!("[Keychain] Warning: could not save to OS keychain ({err}); relying on backup file"),
+    }
+    // Always write the backup file so subsequent startups can recover the key
+    // even when the OS keychain is unavailable.
+    save_backup_key(paths, &material);
+
+    let _ = KEY_MATERIAL_CACHE.set(material.clone());
+    Ok(material)
 }
 
 fn open_stronghold(paths: &VaultPaths) -> Result<Stronghold, String> {
@@ -462,6 +540,7 @@ mod tests {
         let (_dir, paths) = temp_paths();
         assert!(paths.snapshot_path.to_string_lossy().ends_with("auth.stronghold"));
         assert!(paths.legacy_key_path.to_string_lossy().ends_with("stronghold.key"));
+        assert!(paths.backup_key_path.to_string_lossy().ends_with("auth.key"));
     }
 
     #[test]

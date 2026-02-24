@@ -90,6 +90,7 @@ Note: The Device Flow `client_id` is public (not a secret). `HYDITOR_GITHUB_CLIE
 - ✅ Performance: startup `get_token` skips Stronghold when no snapshot file exists (or snapshot is zero-bytes/corrupt); corrupted snapshots are removed without retrying the expensive key-derivation; all HTTP clients use 15-second timeouts to prevent indefinite hangs during token refresh
 - ✅ Performance: `[profile.dev.package."*"] opt-level = 2` in Cargo.toml compiles all dependency crates with optimizations even in debug builds — reduces Stronghold operations (Argon2 key derivation + XChaCha20-Poly1305 save) from ~48 s to ~1 s; all 20 token_store integration tests now run in the default `cargo test` suite (no longer `#[ignore]`d)
 - ✅ Auth UX: per-second countdown timer between polls shows "Waiting for authorization — next check in Ns" instead of raw API status strings
+- ✅ Auth persistence: `auth.key` backup key file (0600 permissions) is written alongside the Stronghold snapshot whenever key material is generated; on subsequent startups the key is loaded from keychain first, then backup file if the keychain is unavailable (locked session, missing secret-service, or distro-specific keyring quirks) — fixes the login-every-time issue on systems where the OS keychain silently drops entries between sessions
 - ✅ `.git` directory excluded from file tree and scoped filesystem operations (backend `filter_entry` + walkdir skip)
 - ✅ Collapsible folder tree in file panel (hierarchical view with toggle chevrons)
 - ✅ Full Preview fixed: Jekyll is spawned via `bash -l -c` to pick up rbenv/rvm/system PATH; `bundle install` is run automatically before `bundle exec jekyll serve`; stderr is forwarded to the terminal; early process exit is detected and reported with an actionable message; `--baseurl ""` added to prevent URL routing issues
@@ -152,17 +153,18 @@ cd src-tauri && cargo test -- --test-threads=1
 - The GitHub Device Flow `client_id` is public and safe to embed.
 - `HYDITOR_GITHUB_CLIENT_ID` overrides the embedded value for development.
   - Copy `.env.example` to `.env` and fill in the value; `.env` is loaded automatically by `npm run tauri:dev` via `dotenv-cli`.
-- Tokens stored in Stronghold encrypted vault (XChaCha20-Poly1305 encryption) at `~/.local/share/hyditor/auth.stronghold`.
+- Tokens stored in Stronghold encrypted vault (XChaCha20-Poly1305 encryption) at `~/.local/share/com.brendonthiede.hyditor/auth.stronghold`.
 - Stronghold unlock material is persisted in the OS keychain (`io.github.brendonthiede.hyditor` / `stronghold-master-key`) and hashed with app context to derive the runtime vault key.
-- Existing `~/.local/share/hyditor/stronghold.key` entries are migrated to the keychain on first access and the local key file is removed.
+- A `auth.key` backup file (0600 permissions, same directory as the snapshot) holds the raw key material as a fallback for when the OS keychain is unavailable.  Key lookup order: in-memory cache → OS keychain → backup file → (legacy `stronghold.key` migration) → generate fresh key.
+- Existing `stronghold.key` entries are migrated to the keychain + backup file on first access and the legacy file is removed.
 - Tokens are persisted between app sessions and refreshed automatically before expiry.
-- An in-memory `StoredToken` cache (`TOKEN_CACHE`) avoids repeated Stronghold snapshot reads.  The cache is populated on first `get_stored_token` call and invalidated on `set_token` / `sign_out`.  Diagnostic timing logs (`[Stronghold]`) are emitted to stderr on cache-miss paths to aid future profiling.
+- An in-memory `StoredToken` cache (`TOKEN_CACHE`) avoids repeated Stronghold snapshot reads.  The cache is populated on first `get_stored_token` call and invalidated on `set_token` / `sign_out`.  Diagnostic timing logs (`[Stronghold]`, `[Keychain]`) are emitted to stderr on cache-miss paths to aid future profiling.
 - If Stronghold snapshot decryption fails (for example due to stale/corrupted local snapshot state), Hyditor removes the corrupt snapshot and shows the sign-in screen without retrying the expensive key-derivation step.
 
 ## Next Work
 
+- Full Preview should load by default, with "Instant" as a toggle option for users who prefer faster previews without Jekyll features.
 - When opening the full preview, jump to the current file in the preview if it is a Markdown file (e.g. open `http://localhost:4000/current-file.md` instead of `http://localhost:4000/`). This should include draft posts that are not published yet.
-- Explore options for not having to login every time that the application starts up. Currently I need to login every time I start the application, which is a bit of a pain.
 - Add a filter for the repository list to handle users with many repos (search + pagination + realtime filtering).
 - When showing the preview, have scrollbars to ensure that the window is the selected size, but the user can scroll to see the full preview if it is larger than the window, in order to make sure the reactive layout is preserved.
 - There have to be scrollbar(s) in the editor window. By default we are word wrapping, so only vertical scrollbars are needed, but if we add a toggle for word wrap in the future, horizontal scrollbars will be needed as well.
