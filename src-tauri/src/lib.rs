@@ -19,6 +19,8 @@ pub fn run() {
             git::clone::clone_repo,
             git::status::git_status,
             git::status::git_diff_file,
+            git::commit::git_stage,
+            git::commit::git_unstage,
             git::commit::git_commit,
             git::push::git_push,
             git::branch::create_branch,

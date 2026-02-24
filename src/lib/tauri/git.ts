@@ -3,6 +3,9 @@ import { invoke } from '@tauri-apps/api/core';
 export type GitStatusEntry = {
   path: string;
   status: string;
+  staged: boolean;
+  unstaged: boolean;
+  untracked: boolean;
 };
 
 export async function status(repoPath: string): Promise<GitStatusEntry[]> {
@@ -11,6 +14,18 @@ export async function status(repoPath: string): Promise<GitStatusEntry[]> {
 
 export async function cloneRepo(owner: string, name: string, path?: string): Promise<string> {
   return invoke<string>('clone_repo', { owner, name, path });
+}
+
+export async function stage(repoPath: string, files: string[]): Promise<void> {
+  await invoke('git_stage', { repoPath, files });
+}
+
+export async function unstage(repoPath: string, files: string[]): Promise<void> {
+  await invoke('git_unstage', { repoPath, files });
+}
+
+export async function commit(repoPath: string, message: string): Promise<string> {
+  return invoke<string>('git_commit', { repoPath, message });
 }
 
 export async function push(repoPath: string): Promise<void> {

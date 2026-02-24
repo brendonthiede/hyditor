@@ -7,10 +7,26 @@
   import GitPanel from '$lib/components/GitPanel.svelte';
   import BranchSelector from '$lib/components/BranchSelector.svelte';
   import { authState, loadAuthState } from '$lib/stores/auth';
-  import { activeRepo } from '$lib/stores/repo';
+  import { activeRepo, gitState } from '$lib/stores/repo';
   import { onMount } from 'svelte';
 
+  let gitPanelEl: HTMLElement | null = null;
+
   $: authenticated = $authState.status === 'authenticated';
+  $: stagedCount = $gitState.entries.filter((entry) => entry.staged).length;
+  $: unstagedCount = $gitState.entries.filter((entry) => entry.unstaged || entry.untracked).length;
+
+  function focusGitPanel(): void {
+    if (!gitPanelEl) {
+      return;
+    }
+
+    gitPanelEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    const firstControl = gitPanelEl.querySelector<HTMLButtonElement | HTMLInputElement | HTMLTextAreaElement>(
+      'button, input, textarea'
+    );
+    firstControl?.focus();
+  }
 
   onMount(loadAuthState);
 </script>
@@ -22,14 +38,19 @@
 {:else}
   <main class="workspace">
     <header class="toolbar">
-      <h1>Hyditor</h1>
+      <div class="title-group">
+        <h1>Hyditor</h1>
+        <button class="git-badge" on:click={focusGitPanel}>
+          Git: {stagedCount} staged / {unstagedCount} unstaged
+        </button>
+      </div>
       <BranchSelector />
     </header>
     <section class="panels">
       <aside class="file-tree"><FileTree /></aside>
       <div class="editor"><Editor /></div>
       <div class="preview"><Preview /></div>
-      <aside class="git"><GitPanel /></aside>
+      <aside class="git" bind:this={gitPanelEl}><GitPanel /></aside>
     </section>
   </main>
 {/if}
@@ -53,6 +74,31 @@
     margin: 0;
     font-size: 1rem;
     font-weight: 600;
+  }
+
+  .title-group {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+
+  .git-badge {
+    border: 1px solid #30363d;
+    background: transparent;
+    color: inherit;
+    border-radius: 999px;
+    padding: 0.15rem 0.5rem;
+    cursor: pointer;
+    font-size: 0.8rem;
+    opacity: 0.85;
+    white-space: nowrap;
+  }
+
+  .git-badge:hover,
+  .git-badge:focus-visible {
+    opacity: 1;
+    border-color: #8b949e;
   }
 
   .panels {

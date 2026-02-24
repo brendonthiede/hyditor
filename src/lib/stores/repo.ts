@@ -1,6 +1,6 @@
 import { get, writable } from 'svelte/store';
 import { listRepos } from '$lib/tauri/github';
-import { cloneRepo, status } from '$lib/tauri/git';
+import { cloneRepo, commit, push, stage, status, type GitStatusEntry, unstage } from '$lib/tauri/git';
 import { readFile, readTree, writeFile } from '$lib/tauri/fs';
 import { fileTree, setCurrentFileContent } from '$lib/stores/editor';
 
@@ -26,7 +26,12 @@ export const repoState = writable<{
   cloning: null,
   error: null
 });
-export const gitState = writable<{ changedFiles: string[] }>({ changedFiles: [] });
+export const gitState = writable<{
+  entries: GitStatusEntry[];
+  busy: boolean;
+  error: string | null;
+  lastAction: string | null;
+}>({ entries: [], busy: false, error: null, lastAction: null });
 export const branchState = writable<{ current: string; branches: string[] }>({
   current: 'main',
   branches: ['main']
@@ -122,10 +127,80 @@ export async function selectRepo(repo: RepoInfo): Promise<void> {
 export async function refreshGitStatus(): Promise<void> {
   const current = get(activeRepo);
   if (!current) {
-    gitState.set({ changedFiles: [] });
+    gitState.set({ entries: [], busy: false, error: null, lastAction: null });
     return;
   }
 
-  const currentStatus = await status(current.localPath);
-  gitState.set({ changedFiles: currentStatus.map((entry) => entry.path) });
+  try {
+    const currentStatus = await status(current.localPath);
+    gitState.update((state) => ({
+      ...state,
+      entries: currentStatus,
+      error: null
+    }));
+  } catch (error) {
+    gitState.update((state) => ({
+      ...state,
+      error: error instanceof Error ? error.message : 'Failed to refresh git status.'
+    }));
+  }
+}
+
+async function runGitAction(actionLabel: string, action: (repoPath: string) => Promise<void>): Promise<void> {
+  const current = get(activeRepo);
+  if (!current) {
+    return;
+  }
+
+  gitState.update((state) => ({ ...state, busy: true, error: null, lastAction: null }));
+  try {
+    await action(current.localPath);
+    await refreshGitStatus();
+    gitState.update((state) => ({ ...state, lastAction: actionLabel }));
+  } catch (error) {
+    gitState.update((state) => ({
+      ...state,
+      error: error instanceof Error ? error.message : `${actionLabel} failed.`
+    }));
+  } finally {
+    gitState.update((state) => ({ ...state, busy: false }));
+  }
+}
+
+export async function stageFiles(files: string[]): Promise<void> {
+  if (files.length === 0) {
+    return;
+  }
+
+  await runGitAction('Staged file selection.', async (repoPath) => {
+    await stage(repoPath, files);
+  });
+}
+
+export async function unstageFiles(files: string[]): Promise<void> {
+  if (files.length === 0) {
+    return;
+  }
+
+  await runGitAction('Unstaged file selection.', async (repoPath) => {
+    await unstage(repoPath, files);
+  });
+}
+
+export async function commitChanges(message: string): Promise<void> {
+  const trimmed = message.trim();
+  if (!trimmed) {
+    gitState.update((state) => ({ ...state, error: 'Commit message is required.' }));
+    return;
+  }
+
+  await runGitAction('Committed staged changes.', async (repoPath) => {
+    await commit(repoPath, trimmed);
+  });
+}
+
+export async function pushChanges(): Promise<void> {
+  await runGitAction('Pushed current branch to origin.', async (repoPath) => {
+    await push(repoPath);
+  });
 }
