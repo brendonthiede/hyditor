@@ -1,6 +1,9 @@
+use base64::Engine;
+use keyring::Entry;
 use rand::rngs::OsRng;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -16,19 +19,22 @@ pub struct StoredToken {
 }
 
 const STRONGHOLD_SNAPSHOT: &str = "auth.stronghold";
-const STRONGHOLD_KEY: &str = "stronghold.key";
+const LEGACY_STRONGHOLD_KEY: &str = "stronghold.key";
 const STRONGHOLD_CLIENT: &str = "hyditor-auth";
 const STRONGHOLD_TOKEN_KEY: &str = "github_token";
+const KEYCHAIN_SERVICE: &str = "io.github.brendonthiede.hyditor";
+const KEYCHAIN_ACCOUNT: &str = "stronghold-master-key";
+const STRONGHOLD_KEY_DERIVATION_CONTEXT: &[u8] = b"hyditor-stronghold-v1";
 
 struct VaultPaths {
     snapshot_path: PathBuf,
-    key_path: PathBuf,
+    legacy_key_path: PathBuf,
 }
 
 fn resolve_vault_paths(base_dir: &Path) -> VaultPaths {
     VaultPaths {
         snapshot_path: base_dir.join(STRONGHOLD_SNAPSHOT),
-        key_path: base_dir.join(STRONGHOLD_KEY),
+        legacy_key_path: base_dir.join(LEGACY_STRONGHOLD_KEY),
     }
 }
 
@@ -42,35 +48,76 @@ fn app_vault_paths(app: &AppHandle) -> Result<VaultPaths, String> {
     Ok(resolve_vault_paths(&base_dir))
 }
 
-fn load_or_create_key(path: &Path) -> Result<Vec<u8>, String> {
-    if path.exists() {
-        return fs::read(path).map_err(|err| format!("failed to read stronghold key: {err}"));
+fn keychain_entry() -> Result<Entry, String> {
+    Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+        .map_err(|err| format!("failed to initialize keychain entry: {err}"))
+}
+
+fn decode_key_material(encoded: &str) -> Result<Vec<u8>, String> {
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|err| format!("failed to decode keychain material: {err}"))?;
+
+    if decoded.is_empty() {
+        return Err("decoded keychain material is empty".to_string());
     }
 
-    let mut key = vec![0u8; 32];
-    OsRng.fill_bytes(&mut key);
+    Ok(decoded)
+}
 
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|err| format!("failed to create key directory: {err}"))?;
+fn load_legacy_key(path: &Path) -> Result<Option<Vec<u8>>, String> {
+    if !path.exists() {
+        return Ok(None);
     }
 
-    fs::write(path, &key)
-        .map_err(|err| format!("failed to write stronghold key: {err}"))?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let perms = fs::Permissions::from_mode(0o600);
-        fs::set_permissions(path, perms)
-            .map_err(|err| format!("failed to set key permissions: {err}"))?;
+    let key = fs::read(path).map_err(|err| format!("failed to read legacy stronghold key: {err}"))?;
+    if key.is_empty() {
+        return Err("legacy stronghold key is empty".to_string());
     }
 
-    Ok(key)
+    Ok(Some(key))
+}
+
+fn derive_stronghold_key(material: &[u8]) -> Vec<u8> {
+    let mut hasher = Sha256::new();
+    hasher.update(material);
+    hasher.update(STRONGHOLD_KEY_DERIVATION_CONTEXT);
+    hasher.finalize().to_vec()
+}
+
+fn load_or_create_key_material(paths: &VaultPaths) -> Result<Vec<u8>, String> {
+    let entry = keychain_entry()?;
+
+    match entry.get_password() {
+        Ok(existing) => decode_key_material(&existing),
+        Err(keyring::Error::NoEntry) => {
+            let material = match load_legacy_key(&paths.legacy_key_path)? {
+                Some(legacy_key) => legacy_key,
+                None => {
+                    let mut random = vec![0u8; 32];
+                    OsRng.fill_bytes(&mut random);
+                    random
+                }
+            };
+
+            let encoded = base64::engine::general_purpose::STANDARD.encode(&material);
+            entry
+                .set_password(&encoded)
+                .map_err(|err| format!("failed to persist key material in keychain: {err}"))?;
+
+            if paths.legacy_key_path.exists() {
+                let _ = fs::remove_file(&paths.legacy_key_path);
+            }
+
+            Ok(material)
+        }
+        Err(err) => Err(format!("failed to read key material from keychain: {err}")),
+    }
 }
 
 fn open_stronghold(paths: &VaultPaths) -> Result<Stronghold, String> {
-    let key = load_or_create_key(&paths.key_path)?;
+    let key_material = load_or_create_key_material(paths)?;
+    let key = derive_stronghold_key(&key_material);
     Stronghold::new(&paths.snapshot_path, key)
         .map_err(|err| format!("failed to open stronghold snapshot: {err}"))
 }
@@ -216,23 +263,20 @@ mod tests {
     }
 
     #[test]
-    fn key_generation_creates_file() {
-        let (_dir, paths) = temp_paths();
-        let key = load_or_create_key(&paths.key_path).expect("key generation should work");
+    fn derive_stronghold_key_is_stable() {
+        let material = vec![7u8; 32];
+        let first = derive_stronghold_key(&material);
+        let second = derive_stronghold_key(&material);
 
-        assert_eq!(key.len(), 32, "key should be 32 bytes");
-        assert!(paths.key_path.exists(), "key file should exist");
-
-        // Second call should return same key
-        let key2 = load_or_create_key(&paths.key_path).expect("key reload should work");
-        assert_eq!(key, key2, "key should be consistent");
+        assert_eq!(first, second, "derived key should be deterministic");
+        assert_eq!(first.len(), 32, "derived key should be 32 bytes");
     }
 
     #[test]
     fn vault_paths_are_correct() {
         let (_dir, paths) = temp_paths();
         assert!(paths.snapshot_path.to_string_lossy().ends_with("auth.stronghold"));
-        assert!(paths.key_path.to_string_lossy().ends_with("stronghold.key"));
+        assert!(paths.legacy_key_path.to_string_lossy().ends_with("stronghold.key"));
     }
 
     #[test]
