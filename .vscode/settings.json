@@ -15,6 +15,10 @@
         "/^pgrep -f 'target/debug/hyditor' \\| head -1$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^cd /home/brendon/code/github/brendonthiede/hyditor/src-tauri && source \\.\\./env\\.dev && cargo build 2>&1 \\| tail -20$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     },
     "chat.mcp.serverSampling": {

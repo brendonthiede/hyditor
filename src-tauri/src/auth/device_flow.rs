@@ -1,7 +1,9 @@
 use crate::auth::token_store::{set_token, StoredToken};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::Emitter;
 
 fn log_auth(message: &str) {
     let ts = SystemTime::now()
@@ -27,6 +29,15 @@ pub struct PollTokenResult {
     pub expires_in: Option<i64>,
     pub refresh_token_expires_in: Option<i64>,
 }
+
+#[derive(Debug, Clone, Serialize)]
+struct PollStatusEvent {
+    status: String,
+    polls_completed: u32,
+    interval_seconds: u64,
+}
+
+static POLLING_CANCELLED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Deserialize)]
 struct DeviceFlowStartResponse {
@@ -188,6 +199,159 @@ pub async fn poll_for_token(app: tauri::AppHandle, device_code: String) -> Resul
         expires_in: None,
         refresh_token_expires_in: None,
     })
+}
+
+/// Cancel any in-progress device polling loop.
+#[tauri::command]
+pub fn cancel_device_polling() {
+    POLLING_CANCELLED.store(true, Ordering::SeqCst);
+    log_auth("cancel_device_polling called");
+}
+
+/// Poll for token in a backend loop, emitting status events to the frontend.
+/// Returns only when authorization succeeds, fails terminally, or is cancelled.
+/// This eliminates per-poll IPC round-trips — the frontend calls this once and
+/// listens for `auth://poll-status` events for progress updates.
+#[tauri::command]
+pub async fn start_device_polling(
+    app: tauri::AppHandle,
+    device_code: String,
+    interval: u64,
+) -> Result<PollTokenResult, String> {
+    log_auth("start_device_polling begin");
+    POLLING_CANCELLED.store(false, Ordering::SeqCst);
+
+    let client_id = github_client_id()?;
+    let client = Client::new();
+    let mut current_interval = std::cmp::max(interval, 1);
+    let mut polls_completed: u32 = 0;
+
+    loop {
+        // Sleep before polling (GitHub requires waiting at least `interval` seconds)
+        tokio::time::sleep(std::time::Duration::from_secs(current_interval)).await;
+
+        if POLLING_CANCELLED.load(Ordering::SeqCst) {
+            log_auth("start_device_polling cancelled");
+            return Ok(PollTokenResult {
+                status: "cancelled".to_string(),
+                access_token: None,
+                refresh_token: None,
+                expires_in: None,
+                refresh_token_expires_in: None,
+            });
+        }
+
+        polls_completed += 1;
+
+        let response = client
+            .post("https://github.com/login/oauth/access_token")
+            .header("Accept", "application/json")
+            .header("User-Agent", "hyditor")
+            .form(&[
+                ("client_id", client_id.as_str()),
+                ("device_code", device_code.as_str()),
+                ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
+            ])
+            .send()
+            .await
+            .map_err(|err| format!("failed to poll for token: {err}"))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<no response body>".to_string());
+            return Err(format!("token polling failed with status {status}: {body}"));
+        }
+
+        let payload: DeviceFlowTokenResponse = response
+            .json()
+            .await
+            .map_err(|err| format!("invalid token polling response: {err}"))?;
+
+        if let Some(access_token) = payload.access_token.clone() {
+            let expires_at = payload.expires_in.and_then(|expires_in| {
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .ok()
+                    .map(|duration| duration.as_secs() as i64 + expires_in)
+            });
+
+            set_token(
+                &app,
+                StoredToken {
+                    access_token: access_token.clone(),
+                    refresh_token: payload.refresh_token.clone(),
+                    expires_at,
+                },
+            )?;
+
+            log_auth(&format!(
+                "start_device_polling authorized after {polls_completed} poll(s)"
+            ));
+
+            return Ok(PollTokenResult {
+                status: "authorized".to_string(),
+                access_token: Some(access_token),
+                refresh_token: payload.refresh_token,
+                expires_in: payload.expires_in,
+                refresh_token_expires_in: payload.refresh_token_expires_in,
+            });
+        }
+
+        let status = match payload.error.as_deref() {
+            Some("authorization_pending") => "authorization_pending",
+            Some("slow_down") => {
+                current_interval += 5;
+                "slow_down"
+            }
+            Some("expired_token") => {
+                log_auth("start_device_polling expired_token");
+                return Ok(PollTokenResult {
+                    status: "expired_token".to_string(),
+                    access_token: None,
+                    refresh_token: None,
+                    expires_in: None,
+                    refresh_token_expires_in: None,
+                });
+            }
+            Some("access_denied") => {
+                log_auth("start_device_polling access_denied");
+                return Ok(PollTokenResult {
+                    status: "access_denied".to_string(),
+                    access_token: None,
+                    refresh_token: None,
+                    expires_in: None,
+                    refresh_token_expires_in: None,
+                });
+            }
+            Some(_) | None => {
+                log_auth("start_device_polling unknown error");
+                return Ok(PollTokenResult {
+                    status: "error".to_string(),
+                    access_token: None,
+                    refresh_token: None,
+                    expires_in: None,
+                    refresh_token_expires_in: None,
+                });
+            }
+        };
+
+        // Emit progress event so the frontend can update UI without IPC round-trips
+        let _ = app.emit(
+            "auth://poll-status",
+            PollStatusEvent {
+                status: status.to_string(),
+                polls_completed,
+                interval_seconds: current_interval,
+            },
+        );
+
+        log_auth(&format!(
+            "start_device_polling poll #{polls_completed} status={status}, next in {current_interval}s"
+        ));
+    }
 }
 
 /// Refresh an expired access token using the refresh token

@@ -20,6 +20,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             auth::device_flow::start_device_flow,
             auth::device_flow::poll_for_token,
+            auth::device_flow::start_device_polling,
+            auth::device_flow::cancel_device_polling,
             auth::token_store::get_token,
             auth::token_store::sign_out,
             github::repos::list_repos,

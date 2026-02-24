@@ -86,6 +86,7 @@ Note: The Device Flow `client_id` is public (not a secret). `HYDITOR_GITHUB_CLIE
 - ✅ Auth resilience: device verification links open via system browser integration and corrupted Stronghold snapshot recovery auto-resets local auth state
 - ✅ Auth UX: `Sign in with GitHub` copies the device code to clipboard; user clicks the verification link to open the browser
 - ✅ Performance: in-memory token cache eliminates repeated `Stronghold::new()` calls (snapshot decrypt + key derivation) on every `get_token`/`get_access_token` invocation; `get_token` double-open bug fixed
+- ✅ Performance: backend-managed device flow polling loop (`start_device_polling`) eliminates per-poll IPC round-trips and redundant `getToken()` verification; status updates emitted via Tauri events (`auth://poll-status`)
 
 ## Contributor Workflow
 
@@ -154,6 +155,7 @@ cd src-tauri && cargo test auth::token_store -- --ignored
 
 ## Next Work
 
+- Exclude the .git folder from the file tree and editor operations to prevent accidental modifications and improve performance.
 - Make folders collapsible in the file tree.
 - Fix "Full Preview" operation. Currently fails to start Jekyll. Frontend shows "Failed to start Jekyll preview." and the process prints "Jekyll failed to become ready: Jekyll preview did not become ready in time." to the terminal.
 - Manual testing and validation of implemented features with various GitHub accounts, repo configurations, and edge cases (token expiry, revoked tokens, 2FA accounts, large repos, etc.)

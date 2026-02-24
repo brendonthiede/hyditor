@@ -1,6 +1,14 @@
 import { writable } from 'svelte/store';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { writeText as writeClipboardText } from '@tauri-apps/plugin-clipboard-manager';
-import { getToken, pollForToken, signOut, startDeviceFlow } from '$lib/tauri/auth';
+import {
+  cancelDevicePolling,
+  getToken,
+  signOut,
+  startDeviceFlow,
+  startDevicePolling,
+  type PollStatusEvent
+} from '$lib/tauri/auth';
 import { extractAuthExpiredMessage } from '$lib/utils/authErrors';
 
 type AuthState = {
@@ -37,14 +45,11 @@ function toErrorMessage(error: unknown, fallback: string): string {
 export function requireReauthentication(message?: string): void {
   activePoll?.abort();
   activePoll = null;
+  cancelDevicePolling().catch(() => {});
   authState.set({
     status: 'error',
     message: message ?? 'GitHub session expired. Sign in again to continue.'
   });
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function copyToClipboard(text: string): Promise<void> {
@@ -56,66 +61,64 @@ async function copyToClipboard(text: string): Promise<void> {
   await writeClipboardText(text);
 }
 
-async function runPolling(deviceCode: string, intervalSeconds: number, signal: AbortSignal): Promise<void> {
-  let currentIntervalMs = Math.max(intervalSeconds, 1) * 1000;
-
-  while (!signal.aborted) {
-    const result = await pollForToken(deviceCode);
-
-    authState.update((current) => {
-      if (current.status !== 'pending') {
-        return current;
-      }
-
-      return {
-        ...current,
-        pollStatus: result.status
-      };
+async function runPolling(
+  deviceCode: string,
+  intervalSeconds: number,
+  signal: AbortSignal
+): Promise<void> {
+  // Listen for backend status events to update the UI during polling
+  let unlisten: UnlistenFn | null = null;
+  try {
+    unlisten = await listen<PollStatusEvent>('auth://poll-status', (event) => {
+      authState.update((current) => {
+        if (current.status !== 'pending') return current;
+        const { status, polls_completed, interval_seconds } = event.payload;
+        return {
+          ...current,
+          pollStatus: `${status} (poll #${polls_completed}, next in ${interval_seconds}s)`
+        };
+      });
     });
+  } catch {
+    // Event listening failed; polling still works, just no intermediate status updates
+  }
+
+  // Cancel backend polling if the frontend abort signal fires
+  const onAbort = () => {
+    cancelDevicePolling().catch(() => {});
+  };
+  signal.addEventListener('abort', onAbort);
+
+  try {
+    // Single IPC call — the Rust backend handles the polling loop internally
+    const result = await startDevicePolling(deviceCode, intervalSeconds);
+
+    if (signal.aborted) return;
 
     if (result.status === 'authorized') {
-      // Show saving feedback – Stronghold write inside poll_for_token already
-      // persisted the token, but getToken() may still be slow on first call.
-      authState.update((current) => ({
-        ...current,
-        pollStatus: 'authorized — saving session…'
-      }));
-
-      try {
-        const token = await getToken();
-        if (token) {
-          authState.set({ status: 'authenticated' });
-          return;
-        }
-
-        authState.set({
-          status: 'error',
-          message: 'Authentication succeeded but token storage failed. Clear local session and sign in again.'
-        });
-        return;
-      } catch (error) {
-        authState.set({
-          status: 'error',
-          message: toErrorMessage(error, 'Failed to verify stored token. Sign in again.')
-        });
-        return;
-      }
+      // Token was already stored by the backend — no redundant getToken() call needed
+      authState.set({ status: 'authenticated' });
+      return;
     }
 
-    if (result.status === 'slow_down') {
-      currentIntervalMs += 5000;
-    } else if (result.status === 'access_denied') {
+    if (result.status === 'cancelled') {
+      return; // Silently handled (user started a new flow or navigated away)
+    }
+
+    if (result.status === 'access_denied') {
       authState.set({ status: 'error', message: 'Authorization was denied in GitHub.' });
       return;
-    } else if (result.status === 'expired_token') {
+    }
+
+    if (result.status === 'expired_token') {
       authState.set({ status: 'error', message: 'Authorization code expired. Start again.' });
-      return;
-    } else if (result.status !== 'authorization_pending') {
-      authState.set({ status: 'error', message: 'Authentication failed. Please try again.' });
       return;
     }
 
-    await sleep(currentIntervalMs);
+    authState.set({ status: 'error', message: 'Authentication failed. Please try again.' });
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+    unlisten?.();
   }
 }
 
@@ -166,6 +169,8 @@ export async function loadAuthState(): Promise<void> {
 export async function beginAuth(): Promise<void> {
   activePoll?.abort();
   activePoll = new AbortController();
+  // Cancel any backend polling from a previous flow
+  cancelDevicePolling().catch(() => {});
 
   authState.set({ status: 'pending' });
 
@@ -202,6 +207,7 @@ export async function beginAuth(): Promise<void> {
 export async function logOut(): Promise<void> {
   activePoll?.abort();
   activePoll = null;
+  cancelDevicePolling().catch(() => {});
   await signOut();
   authState.set({ status: 'signed_out' });
 }
