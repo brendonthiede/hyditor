@@ -21,6 +21,7 @@ import { readFile, readTree, writeFile } from '$lib/tauri/fs';
 import { requireReauthentication } from '$lib/stores/auth';
 import { fileTree, resetEditorState, setCurrentFileContent } from '$lib/stores/editor';
 import { extractAuthExpiredMessage } from '$lib/utils/authErrors';
+import { setPreviewMode } from '$lib/stores/preview';
 
 export type RepoInfo = {
   owner: string;
@@ -210,6 +211,7 @@ export async function selectRepo(repo: RepoInfo): Promise<void> {
     await refreshGitStatus();
     await refreshBranches();
     await refreshPullRequests();
+    void setPreviewMode('jekyll', localPath);
   } catch (error) {
     if (handleAuthExpiredError(error)) {
       return;

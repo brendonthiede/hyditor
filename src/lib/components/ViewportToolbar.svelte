@@ -5,14 +5,6 @@
 
 <nav class="viewport-toolbar">
   <button
-    class:active={$previewState.mode === 'instant'}
-    on:click={() => {
-      void setPreviewMode('instant');
-    }}
-  >
-    Instant
-  </button>
-  <button
     class:active={$previewState.mode === 'jekyll'}
     disabled={$previewState.loading || !$activeRepo}
     on:click={() => {
@@ -20,6 +12,14 @@
     }}
   >
     Full Preview
+  </button>
+  <button
+    class:active={$previewState.mode === 'instant'}
+    on:click={() => {
+      void setPreviewMode('instant');
+    }}
+  >
+    Instant
   </button>
   <button on:click={() => setViewportPreset('desktop')}>Desktop</button>
   <button on:click={() => setViewportPreset('tablet')}>Tablet</button>
