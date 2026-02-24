@@ -17,7 +17,7 @@
     class:active={$previewState.mode === 'jekyll'}
     disabled={$previewState.loading || !$activeRepo}
     on:click={() => {
-      void setPreviewMode('jekyll', $activeRepo?.localPath, $editorState.currentFile);
+      void setPreviewMode('jekyll', $activeRepo?.localPath, $editorState.currentFile, $editorState.currentContent);
     }}
   >
     Full Preview

@@ -12,7 +12,7 @@
 
   // When in Jekyll mode, keep the iframe pointed at the current file.
   $: if ($previewState.mode === 'jekyll') {
-    navigateToCurrentFile($editorState.currentFile);
+    navigateToCurrentFile($editorState.currentFile, $editorState.currentContent);
   }
 
   onDestroy(() => {

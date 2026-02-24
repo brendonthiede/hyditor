@@ -93,7 +93,7 @@ Note: The Device Flow `client_id` is public (not a secret). `HYDITOR_GITHUB_CLIE
 - ✅ `.git` directory excluded from file tree and scoped filesystem operations (backend `filter_entry` + walkdir skip)
 - ✅ Collapsible folder tree in file panel (hierarchical view with toggle chevrons)
 - ✅ Full Preview fixed: Jekyll is spawned via `bash -l -c` to pick up rbenv/rvm/system PATH; `bundle install` is run automatically before `bundle exec jekyll serve`; stderr is forwarded to the terminal; early process exit is detected and reported with an actionable message; `--baseurl ""` added to prevent URL routing issues
-- ✅ Full Preview deep-link: opening Full Preview navigates the iframe directly to the current Markdown file (posts, draft posts, and regular pages); switching files while in Jekyll mode updates the iframe URL automatically; `--drafts` flag passed to Jekyll so draft posts are served
+- ✅ Full Preview deep-link: opening Full Preview navigates the iframe directly to the current Markdown file (posts, draft posts, and regular pages); switching files while in Jekyll mode updates the iframe URL automatically; `--drafts` flag passed to Jekyll so draft posts are served; permalink URL is resolved from the post's front matter (`permalink`, `categories`, `category`, `slug`, `date` overrides) and the site's `_config.yml` `permalink` setting (named presets `date`, `pretty`, `ordinal`, `none` and custom templates all supported)
 
 ## Contributor Workflow
 
@@ -164,6 +164,7 @@ cd src-tauri && cargo test -- --test-threads=1
 - When opening the full preview, jump to the current file in the preview if it is a Markdown file (e.g. open `http://localhost:4000/current-file.md` instead of `http://localhost:4000/`). This should include draft posts that are not published yet.
 - Explore options for not having to login every time that the application starts up. Currently I need to login every time I start the application, which is a bit of a pain.
 - Add a filter for the repository list to handle users with many repos (search + pagination + realtime filtering).
+- When showing the preview, have scrollbars to ensure that the window is the selected size, but the user can scroll to see the full preview if it is larger than the window, in order to make sure the reactive layout is preserved.
 - If a file is only different in whitespace, ignore it in the git status and preview (optional toggle for showing whitespace diffs). Do not allow whitespace-only changes to be staged or committed.
 - Add a filter to the file list to hide files that are not relevant to Jekyll sites (e.g. node_modules, vendor, .bundle, etc.) and/or binary files that cannot be previewed (optional toggle for showing all files) and to filter to matching names.
 - Manual testing and validation of implemented features with various GitHub accounts, repo configurations, and edge cases (token expiry, revoked tokens, 2FA accounts, large repos, etc.)

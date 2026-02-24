@@ -1,6 +1,7 @@
 import { get, writable } from 'svelte/store';
 import { startJekyll, stopJekyll } from '$lib/tauri/preview';
-import { jekyllUrlForFile } from '$lib/utils/jekyll';
+import { readFile } from '$lib/tauri/fs';
+import { jekyllUrlForFile, parseSitePermalink } from '$lib/utils/jekyll';
 
 type Preset = 'desktop' | 'tablet' | 'mobile';
 
@@ -16,6 +17,7 @@ export const previewState = writable<{
   jekyllBaseUrl: string | null;
   jekyllUrl: string | null;
   repoPath: string | null;
+  sitePermalink: string;
   loading: boolean;
   error: string | null;
 }>({
@@ -24,6 +26,7 @@ export const previewState = writable<{
   jekyllBaseUrl: null,
   jekyllUrl: null,
   repoPath: null,
+  sitePermalink: 'date',
   loading: false,
   error: null
 });
@@ -32,10 +35,20 @@ export function setViewportPreset(preset: Preset): void {
   previewState.update((state) => ({ ...state, viewport: PRESETS[preset] }));
 }
 
+async function loadSitePermalink(repoPath: string): Promise<string> {
+  try {
+    const content = await readFile(`${repoPath}/_config.yml`);
+    return parseSitePermalink(content);
+  } catch {
+    return 'date';
+  }
+}
+
 export async function setPreviewMode(
   mode: 'instant' | 'jekyll',
   repoPath?: string,
-  currentFile?: string | null
+  currentFile?: string | null,
+  currentContent?: string
 ): Promise<void> {
   if (mode === 'instant') {
     try {
@@ -50,7 +63,8 @@ export async function setPreviewMode(
       error: null,
       jekyllBaseUrl: null,
       jekyllUrl: null,
-      repoPath: null
+      repoPath: null,
+      sitePermalink: 'date'
     }));
     return;
   }
@@ -75,15 +89,21 @@ export async function setPreviewMode(
   }));
 
   try {
-    const baseUrl = await startJekyll(repoPath);
+    const [baseUrl, sitePermalink] = await Promise.all([
+      startJekyll(repoPath),
+      loadSitePermalink(repoPath)
+    ]);
     const jekyllUrl =
-      currentFile ? jekyllUrlForFile(baseUrl, repoPath, currentFile) : baseUrl;
+      currentFile
+        ? jekyllUrlForFile(baseUrl, repoPath, currentFile, currentContent ?? '', sitePermalink)
+        : baseUrl;
     previewState.update((state) => ({
       ...state,
       mode: 'jekyll',
       jekyllBaseUrl: baseUrl,
       jekyllUrl,
       repoPath,
+      sitePermalink,
       loading: false,
       error: null
     }));
@@ -100,11 +120,14 @@ export async function setPreviewMode(
   }
 }
 
-export function navigateToCurrentFile(filePath: string | null): void {
+export function navigateToCurrentFile(
+  filePath: string | null,
+  fileContent: string = ''
+): void {
   const state = get(previewState);
   if (state.mode !== 'jekyll' || !state.jekyllBaseUrl || !state.repoPath) return;
   const jekyllUrl = filePath
-    ? jekyllUrlForFile(state.jekyllBaseUrl, state.repoPath, filePath)
+    ? jekyllUrlForFile(state.jekyllBaseUrl, state.repoPath, filePath, fileContent, state.sitePermalink)
     : state.jekyllBaseUrl;
   previewState.update((s) => ({ ...s, jekyllUrl }));
 }
