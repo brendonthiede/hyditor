@@ -3,6 +3,14 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+fn log_auth(message: &str) {
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+    eprintln!("[Auth][{ts}] {message}");
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DeviceFlowStart {
     pub verification_uri: String,
@@ -39,24 +47,32 @@ struct DeviceFlowTokenResponse {
 
 const DEFAULT_CLIENT_ID: &str = "Iv1.REPLACE_WITH_YOUR_GITHUB_APP_CLIENT_ID";
 
+fn looks_like_placeholder_client_id(client_id: &str) -> bool {
+    client_id.contains("REPLACE_WITH_YOUR_GITHUB_APP_CLIENT_ID")
+}
+
 fn github_client_id() -> Result<String, String> {
     // Check env first for override (useful in dev/testing)
     if let Ok(client_id) = std::env::var("HYDITOR_GITHUB_CLIENT_ID") {
-        if !client_id.is_empty() {
+        if !client_id.is_empty() && !looks_like_placeholder_client_id(&client_id) {
             return Ok(client_id);
         }
     }
     
     // Use hardcoded default client ID (public, safe to embed)
-    if DEFAULT_CLIENT_ID.starts_with("Iv1.") && DEFAULT_CLIENT_ID.len() > 10 {
+    if DEFAULT_CLIENT_ID.starts_with("Iv1.")
+        && DEFAULT_CLIENT_ID.len() > 10
+        && !looks_like_placeholder_client_id(DEFAULT_CLIENT_ID)
+    {
         Ok(DEFAULT_CLIENT_ID.to_string())
     } else {
-        Err("GitHub client ID not configured. Set HYDITOR_GITHUB_CLIENT_ID or update DEFAULT_CLIENT_ID in source.".to_string())
+        Err("GitHub client ID not configured. Set HYDITOR_GITHUB_CLIENT_ID before signing in.".to_string())
     }
 }
 
 #[tauri::command]
 pub async fn start_device_flow() -> Result<DeviceFlowStart, String> {
+    log_auth("start_device_flow begin");
     let client_id = github_client_id()?;
     let client = Client::new();
     let response = client
@@ -87,6 +103,8 @@ pub async fn start_device_flow() -> Result<DeviceFlowStart, String> {
         .await
         .map_err(|err| format!("invalid device flow start response: {err}"))?;
 
+    log_auth("start_device_flow success");
+
     Ok(DeviceFlowStart {
         verification_uri: payload.verification_uri,
         user_code: payload.user_code,
@@ -97,6 +115,7 @@ pub async fn start_device_flow() -> Result<DeviceFlowStart, String> {
 
 #[tauri::command]
 pub async fn poll_for_token(app: tauri::AppHandle, device_code: String) -> Result<PollTokenResult, String> {
+    log_auth("poll_for_token begin");
     let client_id = github_client_id()?;
     let client = Client::new();
     let response = client
@@ -140,6 +159,8 @@ pub async fn poll_for_token(app: tauri::AppHandle, device_code: String) -> Resul
             expires_at,
         })?;
 
+        log_auth("poll_for_token authorized and token persisted");
+
         return Ok(PollTokenResult {
             status: "authorized".to_string(),
             access_token: Some(access_token),
@@ -158,6 +179,8 @@ pub async fn poll_for_token(app: tauri::AppHandle, device_code: String) -> Resul
         None => "error",
     };
 
+    log_auth(&format!("poll_for_token status={status}"));
+
     Ok(PollTokenResult {
         status: status.to_string(),
         access_token: None,
@@ -172,6 +195,7 @@ pub async fn refresh_access_token(
     app: &tauri::AppHandle,
     refresh_token: &str,
 ) -> Result<StoredToken, String> {
+    log_auth("refresh_access_token begin");
     let client_id = github_client_id()?;
     let client = Client::new();
     let response = client
@@ -216,8 +240,10 @@ pub async fn refresh_access_token(
         };
 
         set_token(app, new_token.clone())?;
+        log_auth("refresh_access_token success");
         Ok(new_token)
     } else {
+        log_auth("refresh_access_token missing access token in response");
         Err("token refresh did not return access token".to_string())
     }
 }

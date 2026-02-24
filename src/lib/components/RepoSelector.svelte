@@ -1,10 +1,18 @@
 <script lang="ts">
-  import { loadRepos, repoState, selectRepo } from '$lib/stores/repo';
+  import { cloneProgress, loadRepos, repoState, selectRepo, type CloneProgress } from '$lib/stores/repo';
+  import { listen } from '@tauri-apps/api/event';
   import { onMount } from 'svelte';
   import { repoList } from '$lib/stores/repo';
 
   onMount(() => {
     void loadRepos();
+    const unlisten = listen('clone_progress', (event) => {
+      cloneProgress.set(event.payload as CloneProgress);
+    });
+
+    return () => {
+      void unlisten.then((dispose) => dispose());
+    };
   });
 </script>
 
@@ -29,6 +37,12 @@
               (cloning…)
             {/if}
           </button>
+          {#if $repoState.cloning === `${repo.owner}/${repo.name}` && $cloneProgress}
+            <p class="progress">
+              {Math.round($cloneProgress.percent)}% 
+              ({$cloneProgress.received_objects}/{$cloneProgress.total_objects} objects, {$cloneProgress.received_bytes} bytes)
+            </p>
+          {/if}
         </li>
       {/each}
     </ul>
@@ -60,5 +74,11 @@
 
   .error {
     color: #f85149;
+  }
+
+  .progress {
+    margin: 0.25rem 0 0;
+    font-size: 0.85rem;
+    opacity: 0.8;
   }
 </style>

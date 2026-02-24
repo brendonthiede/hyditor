@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AUTH_EXPIRED_PREFIX, extractAuthExpiredMessage } from './authErrors';
+import { AUTH_EXPIRED_PREFIX, extractAuthExpiredMessage, shouldShowLocalSessionRecovery } from './authErrors';
 
 describe('auth error utilities', () => {
   it('extracts guided re-auth message from prefixed error', () => {
@@ -17,5 +17,17 @@ describe('auth error utilities', () => {
     expect(extractAuthExpiredMessage('clone failed: network error')).toBeNull();
     expect(extractAuthExpiredMessage(null)).toBeNull();
     expect(extractAuthExpiredMessage(undefined)).toBeNull();
+  });
+
+  it('detects errors where local-session recovery should be shown', () => {
+    expect(shouldShowLocalSessionRecovery('GitHub session expired. Sign in again to continue.')).toBe(true);
+    expect(shouldShowLocalSessionRecovery('refresh token was invalid')).toBe(true);
+    expect(shouldShowLocalSessionRecovery('token revoked by provider')).toBe(true);
+  });
+
+  it('does not show local-session recovery for unrelated errors', () => {
+    expect(shouldShowLocalSessionRecovery('network timeout while loading repositories')).toBe(false);
+    expect(shouldShowLocalSessionRecovery(null)).toBe(false);
+    expect(shouldShowLocalSessionRecovery(undefined)).toBe(false);
   });
 });

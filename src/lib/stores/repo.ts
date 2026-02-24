@@ -33,6 +33,16 @@ export type ActiveRepo = RepoInfo & {
   localPath: string;
 };
 
+export type CloneProgress = {
+  owner: string;
+  name: string;
+  received_objects: number;
+  total_objects: number;
+  indexed_objects: number;
+  received_bytes: number;
+  percent: number;
+};
+
 export const repoList = writable<RepoInfo[]>([]);
 export const activeRepo = writable<ActiveRepo | null>(null);
 export const repoState = writable<{
@@ -44,6 +54,7 @@ export const repoState = writable<{
   cloning: null,
   error: null
 });
+export const cloneProgress = writable<CloneProgress | null>(null);
 export const gitState = writable<{
   entries: GitStatusEntry[];
   busy: boolean;
@@ -67,7 +78,22 @@ export const pullRequestState = writable<{
 }>({ entries: [], busy: false, error: null, lastAction: null });
 
 function getErrorMessage(error: unknown): string | null {
-  return error instanceof Error ? error.message : null;
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  if (typeof error === 'string' && error.trim().length > 0) {
+    return error;
+  }
+
+  if (error && typeof error === 'object' && 'message' in error) {
+    const maybeMessage = (error as { message?: unknown }).message;
+    if (typeof maybeMessage === 'string' && maybeMessage.trim().length > 0) {
+      return maybeMessage;
+    }
+  }
+
+  return null;
 }
 
 function handleAuthExpiredError(error: unknown): boolean {
@@ -78,6 +104,21 @@ function handleAuthExpiredError(error: unknown): boolean {
 
   resetRepoSession();
   requireReauthentication(authExpiredMessage);
+  return true;
+}
+
+function handleNotAuthenticatedError(error: unknown): boolean {
+  const message = getErrorMessage(error);
+  if (!message) {
+    return false;
+  }
+
+  if (!message.toLowerCase().includes('not authenticated')) {
+    return false;
+  }
+
+  resetRepoSession();
+  requireReauthentication('GitHub session missing. Sign in again to continue.');
   return true;
 }
 
@@ -140,9 +181,13 @@ export async function loadRepos(): Promise<void> {
       return;
     }
 
+    if (handleNotAuthenticatedError(error)) {
+      return;
+    }
+
     repoState.update((state) => ({
       ...state,
-      error: error instanceof Error ? error.message : 'Failed to load repositories.'
+      error: getErrorMessage(error) ?? 'Failed to load repositories.'
     }));
   } finally {
     repoState.update((state) => ({ ...state, loading: false }));
@@ -152,6 +197,7 @@ export async function loadRepos(): Promise<void> {
 export async function selectRepo(repo: RepoInfo): Promise<void> {
   const repoKey = `${repo.owner}/${repo.name}`;
   repoState.update((state) => ({ ...state, cloning: repoKey, error: null }));
+  cloneProgress.set(null);
 
   try {
     const localPath = await cloneRepo(repo.owner, repo.name);
@@ -171,10 +217,11 @@ export async function selectRepo(repo: RepoInfo): Promise<void> {
 
     repoState.update((state) => ({
       ...state,
-      error: error instanceof Error ? error.message : 'Failed to clone repository.'
+      error: getErrorMessage(error) ?? 'Failed to clone repository.'
     }));
   } finally {
     repoState.update((state) => ({ ...state, cloning: null }));
+    cloneProgress.set(null);
   }
 }
 
@@ -207,7 +254,7 @@ export async function refreshBranches(): Promise<void> {
 
     branchUiState.update((state) => ({
       ...state,
-      error: error instanceof Error ? error.message : 'Failed to refresh branches.'
+      error: getErrorMessage(error) ?? 'Failed to refresh branches.'
     }));
   } finally {
     branchUiState.update((state) => ({ ...state, busy: false }));
@@ -236,7 +283,7 @@ async function runBranchAction(actionLabel: string, action: (repoPath: string) =
 
     branchUiState.update((state) => ({
       ...state,
-      error: error instanceof Error ? error.message : `${actionLabel} failed.`
+      error: getErrorMessage(error) ?? `${actionLabel} failed.`
     }));
   } finally {
     branchUiState.update((state) => ({ ...state, busy: false }));
@@ -290,7 +337,7 @@ export async function refreshGitStatus(): Promise<void> {
 
     gitState.update((state) => ({
       ...state,
-      error: error instanceof Error ? error.message : 'Failed to refresh git status.'
+      error: getErrorMessage(error) ?? 'Failed to refresh git status.'
     }));
   }
 }
@@ -313,7 +360,7 @@ async function runGitAction(actionLabel: string, action: (repoPath: string) => P
 
     gitState.update((state) => ({
       ...state,
-      error: error instanceof Error ? error.message : `${actionLabel} failed.`
+      error: getErrorMessage(error) ?? `${actionLabel} failed.`
     }));
   } finally {
     gitState.update((state) => ({ ...state, busy: false }));

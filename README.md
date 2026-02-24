@@ -56,9 +56,9 @@ npm install
 npm run tauri:dev
 ```
 
-**Optional:** To use a custom GitHub App for development, set `HYDITOR_GITHUB_CLIENT_ID` environment variable with your app's public client ID before running.
+If `Sign in with GitHub` reports client ID not configured, set `HYDITOR_GITHUB_CLIENT_ID` to your GitHub App public client ID before running.
 
-Note: The app embeds a public `client_id` for Device Flow. This is not a secret and can be overridden for development.
+Note: The Device Flow `client_id` is public (not a secret). `HYDITOR_GITHUB_CLIENT_ID` overrides the embedded value for development.
 
 ## Security Direction
 
@@ -83,6 +83,7 @@ Note: The app embeds a public `client_id` for Device Flow. This is not a secret 
 - ✅ FrontMatterForm structured editor with add/edit/remove field workflow (Phase 3)
 - ✅ Security hardening: explicit local sign-out + revocation guidance UX for refresh-token invalidation edge cases
 - ✅ Security hardening: proactive expired-token detection in GitHub/repo workflows with guided re-auth prompts
+- ✅ Auth resilience: device verification links open via system browser integration and corrupted Stronghold snapshot recovery auto-resets local auth state
 
 ## Contributor Workflow
 
@@ -145,8 +146,11 @@ cd src-tauri && cargo test auth::token_store -- --ignored
 - Stronghold unlock material is persisted in the OS keychain (`io.github.brendonthiede.hyditor` / `stronghold-master-key`) and hashed with app context to derive the runtime vault key.
 - Existing `~/.local/share/hyditor/stronghold.key` entries are migrated to the keychain on first access and the local key file is removed.
 - Tokens are persisted between app sessions and refreshed automatically before expiry.
+- If Stronghold snapshot decryption fails (for example due to stale/corrupted local snapshot state), Hyditor resets only the local auth snapshot and prompts re-authentication.
 
 ## Next Work
 
 - Manual testing and validation of implemented features with various GitHub accounts, repo configurations, and edge cases (token expiry, revoked tokens, 2FA accounts, large repos, etc.)
+- For auth flow, copy the device code to the clipboard and open the system browser to the verification URI when `Sign in with GitHub` is clicked.
+- During auth, showing the last poll status, have a countdown timer for the next poll (this assumes that we are polling at a set interval)
 - Define next roadmap item

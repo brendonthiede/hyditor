@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
 use tauri::Manager;
@@ -26,6 +27,8 @@ const KEYCHAIN_SERVICE: &str = "io.github.brendonthiede.hyditor";
 const KEYCHAIN_ACCOUNT: &str = "stronghold-master-key";
 const STRONGHOLD_KEY_DERIVATION_CONTEXT: &[u8] = b"hyditor-stronghold-v1";
 pub const AUTH_EXPIRED_PREFIX: &str = "AUTH_EXPIRED:";
+
+static KEY_MATERIAL_CACHE: OnceLock<Vec<u8>> = OnceLock::new();
 
 pub fn auth_expired_error(message: &str) -> String {
     format!("{AUTH_EXPIRED_PREFIX} {message}")
@@ -91,10 +94,18 @@ fn derive_stronghold_key(material: &[u8]) -> Vec<u8> {
 }
 
 fn load_or_create_key_material(paths: &VaultPaths) -> Result<Vec<u8>, String> {
+    if let Some(existing) = KEY_MATERIAL_CACHE.get() {
+        return Ok(existing.clone());
+    }
+
     let entry = keychain_entry()?;
 
     match entry.get_password() {
-        Ok(existing) => decode_key_material(&existing),
+        Ok(existing) => {
+            let material = decode_key_material(&existing)?;
+            let _ = KEY_MATERIAL_CACHE.set(material.clone());
+            Ok(material)
+        }
         Err(keyring::Error::NoEntry) => {
             let material = match load_legacy_key(&paths.legacy_key_path)? {
                 Some(legacy_key) => legacy_key,
@@ -114,6 +125,7 @@ fn load_or_create_key_material(paths: &VaultPaths) -> Result<Vec<u8>, String> {
                 let _ = fs::remove_file(&paths.legacy_key_path);
             }
 
+            let _ = KEY_MATERIAL_CACHE.set(material.clone());
             Ok(material)
         }
         Err(err) => Err(format!("failed to read key material from keychain: {err}")),
@@ -123,8 +135,35 @@ fn load_or_create_key_material(paths: &VaultPaths) -> Result<Vec<u8>, String> {
 fn open_stronghold(paths: &VaultPaths) -> Result<Stronghold, String> {
     let key_material = load_or_create_key_material(paths)?;
     let key = derive_stronghold_key(&key_material);
-    Stronghold::new(&paths.snapshot_path, key)
-        .map_err(|err| format!("failed to open stronghold snapshot: {err}"))
+
+    match Stronghold::new(&paths.snapshot_path, key.clone()) {
+        Ok(stronghold) => Ok(stronghold),
+        Err(err) => {
+            let error_message = err.to_string();
+            if should_reset_snapshot(&error_message) {
+                // Try to remove the corrupted file if it exists
+                if paths.snapshot_path.exists() {
+                    if let Err(remove_err) = fs::remove_file(&paths.snapshot_path) {
+                        eprintln!("[Stronghold] Warning: failed to remove corrupted snapshot: {remove_err}");
+                    }
+                }
+                // Retry with fresh snapshot
+                eprintln!("[Stronghold] Recovering from corruption, retrying with fresh snapshot");
+                return Stronghold::new(&paths.snapshot_path, key)
+                    .map_err(|retry_err| format!("failed to open stronghold snapshot after reset: {retry_err}"));
+            }
+
+            Err(format!("failed to open stronghold snapshot: {error_message}"))
+        }
+    }
+}
+
+fn should_reset_snapshot(error_message: &str) -> bool {
+    let lowered = error_message.to_ascii_lowercase();
+    lowered.contains("decode/decrypt")
+        || lowered.contains("badfilekey")
+        || lowered.contains("invalid file")
+        || lowered.contains("invalid snapshot")
 }
 
 fn load_client(stronghold: &Stronghold) -> Result<iota_stronghold::Client, String> {
@@ -297,6 +336,13 @@ mod tests {
         let message = auth_expired_error("GitHub session expired while loading repositories. Sign in again.");
         assert!(message.starts_with(AUTH_EXPIRED_PREFIX));
         assert!(message.contains("loading repositories"));
+    }
+
+    #[test]
+    fn snapshot_reset_detection_matches_decode_errors() {
+        assert!(should_reset_snapshot("invalid file failed to decode/decrypt age content BadFileKey"));
+        assert!(should_reset_snapshot("invalid snapshot format"));
+        assert!(!should_reset_snapshot("permission denied"));
     }
 
     #[test]

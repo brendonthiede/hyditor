@@ -7,11 +7,31 @@ type AuthState = {
   userCode?: string;
   verificationUri?: string;
   message?: string;
+  pollStatus?: string;
 };
 
 export const authState = writable<AuthState>({ status: 'signed_out' });
 
 let activePoll: AbortController | null = null;
+
+function toErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  if (typeof error === 'string' && error.trim().length > 0) {
+    return error;
+  }
+
+  if (error && typeof error === 'object' && 'message' in error) {
+    const maybeMessage = (error as { message?: unknown }).message;
+    if (typeof maybeMessage === 'string' && maybeMessage.trim().length > 0) {
+      return maybeMessage;
+    }
+  }
+
+  return fallback;
+}
 
 export function requireReauthentication(message?: string): void {
   activePoll?.abort();
@@ -32,9 +52,37 @@ async function runPolling(deviceCode: string, intervalSeconds: number, signal: A
   while (!signal.aborted) {
     const result = await pollForToken(deviceCode);
 
+    authState.update((current) => {
+      if (current.status !== 'pending') {
+        return current;
+      }
+
+      return {
+        ...current,
+        pollStatus: result.status
+      };
+    });
+
     if (result.status === 'authorized') {
-      authState.set({ status: 'authenticated' });
-      return;
+      try {
+        const token = await getToken();
+        if (token) {
+          authState.set({ status: 'authenticated' });
+          return;
+        }
+
+        authState.set({
+          status: 'error',
+          message: 'Authentication succeeded but token storage failed. Clear local session and sign in again.'
+        });
+        return;
+      } catch (error) {
+        authState.set({
+          status: 'error',
+          message: toErrorMessage(error, 'Failed to verify stored token. Sign in again.')
+        });
+        return;
+      }
     }
 
     if (result.status === 'slow_down') {
@@ -63,7 +111,7 @@ export async function loadAuthState(): Promise<void> {
       authState.set({ status: 'signed_out' });
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : null;
+    const message = toErrorMessage(error, 'Session expired. Use local sign-out and sign in again.');
     const authExpiredMessage = extractAuthExpiredMessage(message);
     if (authExpiredMessage) {
       requireReauthentication(authExpiredMessage);
@@ -72,10 +120,7 @@ export async function loadAuthState(): Promise<void> {
 
     authState.set({
       status: 'error',
-      message:
-        error instanceof Error
-          ? error.message
-          : 'Session expired. Use local sign-out and sign in again.'
+      message
     });
   }
 }
@@ -92,14 +137,15 @@ export async function beginAuth(): Promise<void> {
       status: 'pending',
       userCode: flow.user_code,
       verificationUri: flow.verification_uri,
-      message: 'Complete authorization in GitHub to finish signing in.'
+      message: 'Complete authorization in GitHub to finish signing in.',
+      pollStatus: 'starting'
     });
 
     await runPolling(flow.device_code, flow.interval, activePoll.signal);
   } catch (error) {
     authState.set({
       status: 'error',
-      message: error instanceof Error ? error.message : 'Failed to start authentication.'
+      message: toErrorMessage(error, 'Failed to start authentication.')
     });
   }
 }

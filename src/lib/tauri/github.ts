@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { tauriInvoke } from '$lib/tauri/runtime';
 import type { RepoInfo } from '$lib/stores/repo';
 
 export type PullRequestInfo = {
@@ -9,11 +9,11 @@ export type PullRequestInfo = {
 };
 
 export async function listRepos(): Promise<RepoInfo[]> {
-  return invoke<RepoInfo[]>('list_repos');
+  return tauriInvoke<RepoInfo[]>('list_repos');
 }
 
 export async function listPullRequests(owner: string, repo: string): Promise<PullRequestInfo[]> {
-  return invoke<PullRequestInfo[]>('list_prs', { owner, repo });
+  return tauriInvoke<PullRequestInfo[]>('list_prs', { owner, repo });
 }
 
 export async function createPullRequest(
@@ -24,7 +24,7 @@ export async function createPullRequest(
   title: string,
   body: string
 ): Promise<PullRequestInfo> {
-  return invoke<PullRequestInfo>('create_pr', {
+  return tauriInvoke<PullRequestInfo>('create_pr', {
     owner,
     repo,
     head,

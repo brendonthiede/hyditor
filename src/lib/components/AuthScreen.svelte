@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { openUrl } from '@tauri-apps/plugin-opener';
   import { authState, beginAuth, logOut } from '$lib/stores/auth';
   import { resetRepoSession } from '$lib/stores/repo';
+  import { shouldShowLocalSessionRecovery } from '$lib/utils/authErrors';
 
   let clearingLocalSession = false;
 
@@ -13,6 +15,16 @@
       clearingLocalSession = false;
     }
   }
+
+  async function openExternal(url: string): Promise<void> {
+    try {
+      await openUrl(url);
+    } catch {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  }
+
+  $: showLocalRecovery = shouldShowLocalSessionRecovery($authState.message);
 </script>
 
 <section class="auth">
@@ -23,24 +35,35 @@
     <div class="device-flow">
       {#if $authState.verificationUri}
         <p>
-          Open <a href={$authState.verificationUri} target="_blank" rel="noreferrer">{$authState.verificationUri}</a>
+          Open
+          <a
+            href={$authState.verificationUri}
+            target="_blank"
+            rel="noreferrer"
+            on:click|preventDefault={() => openExternal($authState.verificationUri!)}>{$authState.verificationUri}</a
+          >
           and enter:
         </p>
       {/if}
       {#if $authState.userCode}<p class="code">{$authState.userCode}</p>{/if}
       {#if $authState.message}<p>{$authState.message}</p>{/if}
+      {#if $authState.pollStatus}
+        <p class="poll-status">Last poll status: {$authState.pollStatus}</p>
+      {/if}
     </div>
   {/if}
 
   {#if $authState.status === 'error' && $authState.message}
     <p class="error">{$authState.message}</p>
-    <button class="secondary" on:click={clearLocalSession} disabled={clearingLocalSession}>
-      {clearingLocalSession ? 'Clearing local session…' : 'Clear local session'}
-    </button>
-    <p class="hint">
-      Use this for refresh-token invalidation edge cases. Optional remote revocation is available in
-      <a href="https://github.com/settings/applications" target="_blank" rel="noreferrer">GitHub application settings</a>.
-    </p>
+    {#if showLocalRecovery}
+      <button class="secondary" on:click={clearLocalSession} disabled={clearingLocalSession}>
+        {clearingLocalSession ? 'Clearing local session…' : 'Clear local session'}
+      </button>
+      <p class="hint">
+        If this looks like a token/session expiry issue, clear local session and sign in again. Optional remote revocation is available in
+        <a href="https://github.com/settings/applications" target="_blank" rel="noreferrer">GitHub application settings</a>.
+      </p>
+    {/if}
   {/if}
 
   <button on:click={beginAuth} disabled={$authState.status === 'pending'}>
@@ -94,5 +117,11 @@
     font-size: 0.9rem;
     opacity: 0.85;
     max-width: 36rem;
+  }
+
+  .poll-status {
+    margin: 0;
+    font-size: 0.8rem;
+    opacity: 0.75;
   }
 </style>

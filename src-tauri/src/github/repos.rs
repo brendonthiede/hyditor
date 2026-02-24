@@ -1,6 +1,15 @@
 use serde::Serialize;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::auth::token_store::{auth_expired_error, clear_stored_token, get_access_token};
+
+fn log_repos(message: &str) {
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+    eprintln!("[Repos][{ts}] {message}");
+}
 
 #[derive(Debug, serde::Deserialize)]
 struct GithubRepoOwner {
@@ -48,6 +57,7 @@ fn is_auth_failure_status(status: reqwest::StatusCode, body: &str) -> bool {
 
 #[tauri::command]
 pub async fn list_repos(app: tauri::AppHandle) -> Result<Vec<RepoInfo>, String> {
+    log_repos("list_repos start");
     let token = get_access_token(&app).await?;
     let client = reqwest::Client::new();
 
@@ -61,8 +71,11 @@ pub async fn list_repos(app: tauri::AppHandle) -> Result<Vec<RepoInfo>, String> 
     while let Some(url) = next_url {
         page_count += 1;
         if page_count > 10 {
+            log_repos("page limit reached, stopping pagination at 10 pages");
             break;
         }
+
+        log_repos(&format!("fetching page {page_count}: {url}"));
 
         let response = client
             .get(&url)
@@ -83,6 +96,7 @@ pub async fn list_repos(app: tauri::AppHandle) -> Result<Vec<RepoInfo>, String> 
 
             if is_auth_failure_status(status, &body) {
                 let _ = clear_stored_token(&app);
+                log_repos(&format!("auth failure status={status}"));
                 return Err(auth_expired_error(
                     "GitHub session expired while loading repositories. Sign in again.",
                 ));
@@ -109,6 +123,8 @@ pub async fn list_repos(app: tauri::AppHandle) -> Result<Vec<RepoInfo>, String> 
             description: repo.description,
         }));
 
+        log_repos(&format!("accumulated repos={}", repos.len()));
+
         next_url = link_header.and_then(|value| parse_next_link(&value));
     }
 
@@ -117,6 +133,8 @@ pub async fn list_repos(app: tauri::AppHandle) -> Result<Vec<RepoInfo>, String> 
         let right = format!("{}/{}", b.owner.to_lowercase(), b.name.to_lowercase());
         left.cmp(&right)
     });
+
+    log_repos(&format!("list_repos complete total={}", repos.len()));
 
     Ok(repos)
 }

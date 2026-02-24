@@ -20,6 +20,15 @@ body {
   color: #c9d1d9;
 }
 
+a {
+  color: #58a6ff;
+}
+
+a:hover,
+a:focus-visible {
+  color: #79c0ff;
+}
+
 button,
 input,
 select,

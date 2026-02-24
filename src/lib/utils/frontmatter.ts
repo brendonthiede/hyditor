@@ -1,8 +1,46 @@
-import matter from 'gray-matter';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+
+type ParsedFrontmatterDocument = {
+  data: Record<string, unknown>;
+  content: string;
+};
+
+function parseFrontmatterDocument(content: string): ParsedFrontmatterDocument {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (!match) {
+    return { data: {}, content };
+  }
+
+  const yamlSource = match[1] ?? '';
+  const body = content.slice(match[0].length);
+
+  try {
+    const parsed = parseYaml(yamlSource);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { data: {}, content: body };
+    }
+
+    return { data: parsed as Record<string, unknown>, content: body };
+  } catch {
+    return { data: {}, content: body };
+  }
+}
+
+function stringifyFrontmatterDocument(content: string, data: Record<string, unknown>): string {
+  const parsed = parseFrontmatterDocument(content);
+  const body = parsed.content;
+  const keys = Object.keys(data);
+
+  if (keys.length === 0) {
+    return body;
+  }
+
+  const yaml = stringifyYaml(data).trimEnd();
+  return `---\n${yaml}\n---\n\n${body}`;
+}
 
 export function parseFrontmatter(content: string): { data: Record<string, unknown>; content: string } {
-  const parsed = matter(content);
-  return { data: parsed.data, content: parsed.content };
+  return parseFrontmatterDocument(content);
 }
 
 function parseFrontmatterValue(value: string): unknown {
@@ -33,8 +71,7 @@ function parseFrontmatterValue(value: string): unknown {
 }
 
 function stringifyWithFrontmatter(content: string, data: Record<string, unknown>): string {
-  const parsed = matter(content);
-  return matter.stringify(parsed.content, data);
+  return stringifyFrontmatterDocument(content, data);
 }
 
 export function upsertFrontmatterField(content: string, key: string, value: string): string {
@@ -43,7 +80,7 @@ export function upsertFrontmatterField(content: string, key: string, value: stri
     return content;
   }
 
-  const parsed = matter(content);
+  const parsed = parseFrontmatterDocument(content);
   const nextData = { ...parsed.data, [normalizedKey]: parseFrontmatterValue(value) };
   return stringifyWithFrontmatter(content, nextData);
 }
@@ -56,7 +93,7 @@ export function renameFrontmatterField(content: string, previousKey: string, nex
     return content;
   }
 
-  const parsed = matter(content);
+  const parsed = parseFrontmatterDocument(content);
   if (!(normalizedPrevious in parsed.data)) {
     return content;
   }
@@ -75,7 +112,7 @@ export function removeFrontmatterField(content: string, key: string): string {
     return content;
   }
 
-  const parsed = matter(content);
+  const parsed = parseFrontmatterDocument(content);
   if (!(normalizedKey in parsed.data)) {
     return content;
   }

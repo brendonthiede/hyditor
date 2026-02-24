@@ -1,9 +1,9 @@
-import { invoke } from '@tauri-apps/api/core';
+import { tauriInvoke } from '$lib/tauri/runtime';
 
 export async function startJekyll(repoPath: string): Promise<string> {
-  return invoke<string>('start_jekyll', { repoPath });
+  return tauriInvoke<string>('start_jekyll', { repoPath });
 }
 
 export async function stopJekyll(): Promise<void> {
-  await invoke('stop_jekyll');
+  await tauriInvoke('stop_jekyll');
 }
