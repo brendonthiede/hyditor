@@ -78,6 +78,8 @@ Note: The app embeds a public `client_id` for Device Flow. This is not a secret 
 - ✅ Responsive viewport simulation (Desktop/Tablet/Mobile presets)
 - ✅ Debounced editor autosave to scoped filesystem
 - ✅ Git status, staging, commit, and push UI with file selectors
+- ✅ Branch management UI (list/switch/create) with local checkout refresh
+- ✅ Pull request workflow UI (list/create) backed by GitHub API commands
 
 ## Contributor Workflow
 
@@ -141,6 +143,5 @@ cd src-tauri && cargo test auth::token_store -- --ignored
 
 ## Next Work
 
-- Implement branch management and PR workflow UI components
 - Add FrontMatterForm structured editor (Phase 3)
 - OS keychain-backed key derivation (instead of local key file) for enhanced security

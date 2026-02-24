@@ -1,6 +1,22 @@
 import { get, writable } from 'svelte/store';
-import { listRepos } from '$lib/tauri/github';
-import { cloneRepo, commit, push, stage, status, type GitStatusEntry, unstage } from '$lib/tauri/git';
+import {
+  createPullRequest,
+  listPullRequests,
+  listRepos,
+  type PullRequestInfo
+} from '$lib/tauri/github';
+import {
+  cloneRepo,
+  commit,
+  createBranch,
+  listBranches,
+  push,
+  stage,
+  status,
+  switchBranch,
+  type GitStatusEntry,
+  unstage
+} from '$lib/tauri/git';
 import { readFile, readTree, writeFile } from '$lib/tauri/fs';
 import { fileTree, setCurrentFileContent } from '$lib/stores/editor';
 
@@ -36,6 +52,17 @@ export const branchState = writable<{ current: string; branches: string[] }>({
   current: 'main',
   branches: ['main']
 });
+export const branchUiState = writable<{
+  busy: boolean;
+  error: string | null;
+  lastAction: string | null;
+}>({ busy: false, error: null, lastAction: null });
+export const pullRequestState = writable<{
+  entries: PullRequestInfo[];
+  busy: boolean;
+  error: string | null;
+  lastAction: string | null;
+}>({ entries: [], busy: false, error: null, lastAction: null });
 
 function isMarkdownPath(path: string): boolean {
   const lower = path.toLowerCase();
@@ -114,6 +141,8 @@ export async function selectRepo(repo: RepoInfo): Promise<void> {
     await openFirstMarkdownFile(localPath);
 
     await refreshGitStatus();
+    await refreshBranches();
+    await refreshPullRequests();
   } catch (error) {
     repoState.update((state) => ({
       ...state,
@@ -122,6 +151,89 @@ export async function selectRepo(repo: RepoInfo): Promise<void> {
   } finally {
     repoState.update((state) => ({ ...state, cloning: null }));
   }
+}
+
+export async function refreshBranches(): Promise<void> {
+  const current = get(activeRepo);
+  if (!current) {
+    branchState.set({ current: 'main', branches: ['main'] });
+    branchUiState.set({ busy: false, error: null, lastAction: null });
+    return;
+  }
+
+  branchUiState.update((state) => ({ ...state, busy: true, error: null }));
+  try {
+    const branches = await listBranches(current.localPath);
+    const sortedBranches = [...branches].sort((left, right) => left.localeCompare(right));
+    const fallbackCurrent = sortedBranches.includes(current.default_branch)
+      ? current.default_branch
+      : sortedBranches[0] ?? current.default_branch;
+    branchState.update((state) => {
+      const resolvedCurrent = sortedBranches.includes(state.current) ? state.current : fallbackCurrent;
+      return {
+        current: resolvedCurrent,
+        branches: sortedBranches
+      };
+    });
+  } catch (error) {
+    branchUiState.update((state) => ({
+      ...state,
+      error: error instanceof Error ? error.message : 'Failed to refresh branches.'
+    }));
+  } finally {
+    branchUiState.update((state) => ({ ...state, busy: false }));
+  }
+}
+
+async function runBranchAction(actionLabel: string, action: (repoPath: string) => Promise<void>): Promise<void> {
+  const current = get(activeRepo);
+  if (!current) {
+    return;
+  }
+
+  branchUiState.update((state) => ({ ...state, busy: true, error: null, lastAction: null }));
+  try {
+    await action(current.localPath);
+    await refreshBranches();
+    await refreshGitStatus();
+    const tree = await readTree(current.localPath);
+    fileTree.set(tree);
+    await openFirstMarkdownFile(current.localPath);
+    branchUiState.update((state) => ({ ...state, lastAction: actionLabel }));
+  } catch (error) {
+    branchUiState.update((state) => ({
+      ...state,
+      error: error instanceof Error ? error.message : `${actionLabel} failed.`
+    }));
+  } finally {
+    branchUiState.update((state) => ({ ...state, busy: false }));
+  }
+}
+
+export async function switchRepoBranch(branchName: string): Promise<void> {
+  const trimmed = branchName.trim();
+  if (!trimmed) {
+    return;
+  }
+
+  await runBranchAction(`Switched to branch ${trimmed}.`, async (repoPath) => {
+    await switchBranch(repoPath, trimmed);
+    branchState.update((state) => ({ ...state, current: trimmed }));
+  });
+}
+
+export async function createRepoBranch(branchName: string): Promise<void> {
+  const trimmed = branchName.trim();
+  if (!trimmed) {
+    branchUiState.update((state) => ({ ...state, error: 'Branch name is required.' }));
+    return;
+  }
+
+  await runBranchAction(`Created and switched to ${trimmed}.`, async (repoPath) => {
+    await createBranch(repoPath, trimmed);
+    await switchBranch(repoPath, trimmed);
+    branchState.update((state) => ({ ...state, current: trimmed }));
+  });
 }
 
 export async function refreshGitStatus(): Promise<void> {
@@ -203,4 +315,71 @@ export async function pushChanges(): Promise<void> {
   await runGitAction('Pushed current branch to origin.', async (repoPath) => {
     await push(repoPath);
   });
+}
+
+export async function refreshPullRequests(): Promise<void> {
+  const current = get(activeRepo);
+  if (!current) {
+    pullRequestState.set({ entries: [], busy: false, error: null, lastAction: null });
+    return;
+  }
+
+  pullRequestState.update((state) => ({ ...state, busy: true, error: null }));
+  try {
+    const entries = await listPullRequests(current.owner, current.name);
+    pullRequestState.update((state) => ({
+      ...state,
+      entries,
+      error: null
+    }));
+  } catch (error) {
+    pullRequestState.update((state) => ({
+      ...state,
+      error: error instanceof Error ? error.message : 'Failed to list pull requests.'
+    }));
+  } finally {
+    pullRequestState.update((state) => ({ ...state, busy: false }));
+  }
+}
+
+export async function createRepoPullRequest(input: {
+  head: string;
+  base: string;
+  title: string;
+  body: string;
+}): Promise<void> {
+  const current = get(activeRepo);
+  if (!current) {
+    return;
+  }
+
+  const title = input.title.trim();
+  if (!title) {
+    pullRequestState.update((state) => ({ ...state, error: 'Pull request title is required.' }));
+    return;
+  }
+
+  const head = input.head.trim();
+  const base = input.base.trim();
+  if (!head || !base) {
+    pullRequestState.update((state) => ({ ...state, error: 'Both head and base branches are required.' }));
+    return;
+  }
+
+  pullRequestState.update((state) => ({ ...state, busy: true, error: null, lastAction: null }));
+  try {
+    const created = await createPullRequest(current.owner, current.name, head, base, title, input.body.trim());
+    pullRequestState.update((state) => ({
+      ...state,
+      entries: [created, ...state.entries.filter((entry) => entry.number !== created.number)],
+      lastAction: `Created PR #${created.number}.`
+    }));
+  } catch (error) {
+    pullRequestState.update((state) => ({
+      ...state,
+      error: error instanceof Error ? error.message : 'Failed to create pull request.'
+    }));
+  } finally {
+    pullRequestState.update((state) => ({ ...state, busy: false }));
+  }
 }

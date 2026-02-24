@@ -31,3 +31,15 @@ export async function commit(repoPath: string, message: string): Promise<string>
 export async function push(repoPath: string): Promise<void> {
   await invoke('git_push', { repoPath });
 }
+
+export async function listBranches(repoPath: string): Promise<string[]> {
+  return invoke<string[]>('list_branches', { repoPath });
+}
+
+export async function createBranch(repoPath: string, branchName: string): Promise<void> {
+  await invoke('create_branch', { repoPath, branchName });
+}
+
+export async function switchBranch(repoPath: string, branchName: string): Promise<void> {
+  await invoke('switch_branch', { repoPath, branchName });
+}

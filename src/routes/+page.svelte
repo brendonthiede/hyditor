@@ -6,6 +6,7 @@
   import Preview from '$lib/components/Preview.svelte';
   import GitPanel from '$lib/components/GitPanel.svelte';
   import BranchSelector from '$lib/components/BranchSelector.svelte';
+  import PRDialog from '$lib/components/PRDialog.svelte';
   import { authState, loadAuthState } from '$lib/stores/auth';
   import { activeRepo, gitState } from '$lib/stores/repo';
   import { onMount } from 'svelte';
@@ -44,7 +45,10 @@
           Git: {stagedCount} staged / {unstagedCount} unstaged
         </button>
       </div>
-      <BranchSelector />
+      <div class="toolbar-actions">
+        <BranchSelector />
+        <PRDialog />
+      </div>
     </header>
     <section class="panels">
       <aside class="file-tree"><FileTree /></aside>
@@ -107,6 +111,12 @@
     gap: 0;
     flex: 1;
     min-height: 0;
+  }
+
+  .toolbar-actions {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
   }
 
   .file-tree,
