@@ -160,5 +160,6 @@ cd src-tauri && cargo test -- --test-threads=1
 ## Next Work
 
 - Fix "Full Preview" operation. Currently fails to start Jekyll. Frontend shows "Failed to start Jekyll preview." and the process prints "Jekyll failed to become ready: Jekyll preview did not become ready in time." to the terminal.
+- Add a filter for the repository list to handle users with many repos (search + pagination + realtime filtering).
 - Manual testing and validation of implemented features with various GitHub accounts, repo configurations, and edge cases (token expiry, revoked tokens, 2FA accounts, large repos, etc.)
 - Define next roadmap item
