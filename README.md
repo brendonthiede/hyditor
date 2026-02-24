@@ -269,6 +269,8 @@ cd src-tauri && cargo test -- --test-threads=1
 
 ## Next Work
 
+- Provide a way to go back to the repo selection screen after a repo is opened (e.g. "Open another repository" button in the sidebar header that clears the current state and navigates back to the repo list).
+- The different "panels" should be able to be resized, collapsed, and rearranged by the user (e.g. drag to resize the file explorer width, collapse the Git panel when not in use, drag the preview to the right side instead of below the editor, etc.). The preview panel should also have a fullscreen toggle to maximize the preview area when needed, perhaps popping out to a new window.
 - If a file is only different in whitespace, ignore it in the git status and preview (optional toggle for showing whitespace diffs). Do not allow whitespace-only changes to be staged or committed.
 - Add a filter to the file list to hide files that are not relevant to Jekyll sites (e.g. node_modules, vendor, .bundle, etc.) and/or binary files that cannot be previewed (optional toggle for showing all files) and to filter to matching names.
 - Manual testing and validation of implemented features with various GitHub accounts, repo configurations, and edge cases (token expiry, revoked tokens, 2FA accounts, large repos, etc.)
