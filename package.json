@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",
+    "tauri": "tauri",
     "tauri:dev": "dotenv tauri dev",
     "tauri:build": "tauri build"
   },
