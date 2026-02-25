@@ -1,5 +1,5 @@
 <script context="module" lang="ts">
-  import { writable } from 'svelte/store';
+  import { derived, writable } from 'svelte/store';
 
   interface TreeNode {
     name: string;
@@ -8,7 +8,51 @@
     children: TreeNode[];
   }
 
+  /** Top-level directory/file names that are not relevant to Jekyll sites. */
+  const JEKYLL_IGNORED_NAMES = new Set([
+    'node_modules',
+    'vendor',
+    '.bundle',
+    '_site',
+    '.sass-cache',
+    '.jekyll-cache',
+    '.jekyll-metadata'
+  ]);
+
+  /** File extensions that are binary/non-previewable. */
+  const BINARY_EXTENSIONS = new Set([
+    '.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp', '.bmp', '.tiff', '.avif',
+    '.woff', '.woff2', '.ttf', '.eot', '.otf',
+    '.zip', '.tar', '.gz', '.bz2', '.br', '.7z', '.rar',
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+    '.exe', '.bin', '.o', '.so', '.dylib', '.a',
+    '.mp4', '.mp3', '.mov', '.avi', '.wav', '.ogg', '.flac', '.mid',
+    '.pyc', '.class', '.wasm'
+  ]);
+
+  function isBinary(path: string): boolean {
+    const dot = path.lastIndexOf('.');
+    if (dot === -1) return false;
+    return BINARY_EXTENSIONS.has(path.slice(dot).toLowerCase());
+  }
+
+  function topLevelName(path: string): string {
+    return path.split('/')[0];
+  }
+
   const collapsedDirs = writable<Set<string>>(new Set());
+  const filterText = writable('');
+  const showAll = writable(false);
+
+  /**
+   * When a search query is active every directory should be expanded so the
+   * user can see matching results without having to manually open folders.
+   */
+  const effectiveCollapsedDirs = derived(
+    [filterText, collapsedDirs],
+    ([$filterText, $collapsedDirs]) =>
+      $filterText.trim() ? (new Set<string>()) : $collapsedDirs
+  );
 </script>
 
 <script lang="ts">
@@ -82,9 +126,53 @@
     collapsedDirs.set(new SvelteSet(getAllDirPaths(tree)));
   }
 
+  function applyFilters(
+    items: { path: string; is_dir: boolean }[],
+    all: boolean,
+    query: string
+  ): { path: string; is_dir: boolean }[] {
+    let filtered = items;
+
+    if (!all) {
+      // Remove Jekyll-irrelevant top-level entries (whole subtrees already
+      // excluded by checking the first path segment).
+      filtered = filtered.filter((item) => !JEKYLL_IGNORED_NAMES.has(topLevelName(item.path)));
+      // Remove binary files (keep directories — their children drive visibility).
+      filtered = filtered.filter((item) => item.is_dir || !isBinary(item.path));
+    }
+
+    const q = query.trim().toLowerCase();
+    if (q) {
+      // Collect files/dirs whose name matches, plus all their ancestor dirs.
+      const keep = new Set<string>();
+      for (const item of filtered) {
+        const name = item.path.split('/').pop() ?? '';
+        if (name.toLowerCase().includes(q)) {
+          keep.add(item.path);
+          // Add every ancestor path so the tree renders correctly.
+          const parts = item.path.split('/');
+          for (let i = 1; i < parts.length; i++) {
+            keep.add(parts.slice(0, i).join('/'));
+          }
+        }
+      }
+      filtered = filtered.filter((item) => keep.has(item.path));
+    }
+
+    return filtered;
+  }
+
   $: isRoot = nodes === undefined;
-  $: tree = isRoot ? buildTree($fileTree) : [];
+  $: filteredItems = isRoot ? applyFilters($fileTree, $showAll, $filterText) : [];
+  $: tree = isRoot ? buildTree(filteredItems) : [];
   $: displayNodes = nodes ?? tree;
+  $: hiddenCount = isRoot && !$showAll
+    ? $fileTree.filter(
+        (item) =>
+          JEKYLL_IGNORED_NAMES.has(topLevelName(item.path)) ||
+          (!item.is_dir && isBinary(item.path))
+      ).length
+    : 0;
 </script>
 
 {#if isRoot}
@@ -92,16 +180,44 @@
     <div class="file-tree-header">
       <h3>Files</h3>
       {#if $fileTree.length > 0}
-        <button class="collapse-all-btn" title="Collapse all folders" on:click={collapseAll}>
+        <button class="icon-btn" title="Collapse all folders" on:click={collapseAll}>
           ⊟
+        </button>
+        <button
+          class="icon-btn"
+          class:active={$showAll}
+          title={$showAll
+            ? 'Showing all files — click to hide non-Jekyll / binary files'
+            : 'Filtering to Jekyll-relevant files — click to show all files'}
+          on:click={() => showAll.update((v) => !v)}
+        >
+          {$showAll ? '👁' : '🔽'}
         </button>
       {/if}
       <button class="panel-collapse-btn" title="Collapse file panel" on:click={() => layout.toggleFileTree()}>
         ◀
       </button>
     </div>
+    {#if $fileTree.length > 0}
+      <div class="filter-row">
+        <input
+          class="filter-input"
+          type="search"
+          placeholder="Filter files…"
+          bind:value={$filterText}
+          aria-label="Filter files by name"
+        />
+      </div>
+      {#if !$showAll && hiddenCount > 0}
+        <p class="hidden-notice">
+          {hiddenCount} item{hiddenCount === 1 ? '' : 's'} hidden — <button class="inline-link" on:click={() => showAll.set(true)}>show all</button>
+        </p>
+      {/if}
+    {/if}
     {#if $fileTree.length === 0}
       <p>No files loaded.</p>
+    {:else if filteredItems.length === 0}
+      <p class="no-results">No files match.</p>
     {:else}
       <svelte:self nodes={displayNodes} />
     {/if}
@@ -112,10 +228,10 @@
       <li>
         {#if node.is_dir}
           <button class="dir-toggle" on:click={() => toggleDir(node.path)}>
-            <span class="chevron" class:collapsed={$collapsedDirs.has(node.path)}>▶</span>
+            <span class="chevron" class:collapsed={$effectiveCollapsedDirs.has(node.path)}>▶</span>
             <strong>{node.name}</strong>
           </button>
-          {#if !$collapsedDirs.has(node.path) && node.children.length > 0}
+          {#if !$effectiveCollapsedDirs.has(node.path) && node.children.length > 0}
             <svelte:self nodes={node.children} />
           {/if}
         {:else}
@@ -150,7 +266,7 @@
     margin: 0;
   }
 
-  .collapse-all-btn {
+  .icon-btn {
     background: transparent;
     border: 1px solid transparent;
     border-radius: 6px;
@@ -162,7 +278,12 @@
     opacity: 0.7;
   }
 
-  .collapse-all-btn:hover {
+  .icon-btn:hover {
+    border-color: #30363d;
+    opacity: 1;
+  }
+
+  .icon-btn.active {
     border-color: #30363d;
     opacity: 1;
   }
@@ -183,6 +304,48 @@
   .panel-collapse-btn:hover {
     border-color: #30363d;
     opacity: 1;
+  }
+
+  .filter-row {
+    margin-bottom: 0.35rem;
+  }
+
+  .filter-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: #0d1117;
+    color: inherit;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.85rem;
+    outline: none;
+  }
+
+  .filter-input:focus {
+    border-color: #58a6ff;
+  }
+
+  .hidden-notice {
+    font-size: 0.75rem;
+    opacity: 0.6;
+    margin: 0 0 0.35rem;
+  }
+
+  .inline-link {
+    background: none;
+    border: none;
+    color: #58a6ff;
+    cursor: pointer;
+    font-size: inherit;
+    padding: 0;
+    text-decoration: underline;
+  }
+
+  .no-results {
+    font-size: 0.85rem;
+    opacity: 0.6;
+    margin-top: 0.5rem;
   }
 
   ul {
