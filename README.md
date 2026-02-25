@@ -4,6 +4,21 @@
 
 Secure, desktop-native editor and previewer for Jekyll sites on GitHub Pages.
 
+[![CI](https://github.com/brendonthiede/hyditor/actions/workflows/ci.yml/badge.svg)](https://github.com/brendonthiede/hyditor/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/brendonthiede/hyditor)](https://github.com/brendonthiede/hyditor/releases/latest)
+
+## Releases
+
+Pre-built binaries for Linux, Windows, and macOS are attached to every [GitHub Release](https://github.com/brendonthiede/hyditor/releases).
+
+| Platform | Artifacts |
+|---|---|
+| Linux | `.deb`, `.AppImage`, `.rpm` |
+| Windows | `.msi`, `.exe` (NSIS installer) |
+| macOS | `.dmg` |
+
+> **macOS builds** are enabled by default. To disable them (e.g. to save GitHub Actions minutes), set the repository variable `ENABLE_MACOS_BUILD` to `false` in **Settings → Secrets and variables → Actions → Variables**.
+
 ## Status
 
 This repository currently contains the **Phase 1 foundation scaffold**:
@@ -221,6 +236,16 @@ When the auth screen shows a verification link, **do not click it** — the devi
   - `Implemented (Phase 1)` (or the current implementation section) with completed deliverables.
   - `Next Work` by removing completed items and adding/refining upcoming work.
 - If commands, prerequisites, or test workflows change, update `Quick Start` and `Tests` in the same PR.
+
+## CI / Releases
+
+The `ci` workflow runs on every push to `main` and every pull request, executing lint, type checks, dependency audit, frontend unit tests, and Rust tests on both Linux and Windows.
+
+The `release` workflow is triggered by pushing a semver tag (e.g. `git tag v0.1.1 && git push --tags`) or manually via **Actions → Release → Run workflow** (provide the version without the `v` prefix). It re-runs all CI checks, then builds native binaries for Linux, Windows, and macOS in parallel and attaches them to a **draft** GitHub Release pre-populated with auto-generated release notes. Review the draft and publish when ready.
+
+Release notes are categorized by PR label using [`.github/release.yml`](.github/release.yml). Labels: `breaking`, `enhancement`/`feature`, `bug`/`fix`, `documentation`/`docs`, `maintenance`/`dependencies`/`chore`. Any PR not matching a label appears under "Other Changes".
+
+The `ENABLE_MACOS_BUILD` repository variable controls whether the macOS build job runs (default: enabled). Set it to `false` in **Settings → Secrets and variables → Actions → Variables** to skip macOS builds.
 
 ## PR Checklist
 
