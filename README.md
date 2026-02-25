@@ -274,5 +274,8 @@ cd src-tauri && cargo test -- --test-threads=1
 
 - If a file is only different in whitespace, ignore it in the git status and preview (optional toggle for showing whitespace diffs). Do not allow whitespace-only changes to be staged or committed.
 - Add a filter to the file list to hide files that are not relevant to Jekyll sites (e.g. node_modules, vendor, .bundle, etc.) and/or binary files that cannot be previewed (optional toggle for showing all files) and to filter to matching names.
-- Manual testing and validation of implemented features with various GitHub accounts, repo configurations, and edge cases (token expiry, revoked tokens, 2FA accounts, large repos, etc.)
+- Add a text search to look for content across all text files in the repo. This should be a "blade" system like in VS Code, where you select whether you want to see the file list or the search results in the left panel.
+- Add a way to copy the path to where teh git repo is cached on the local filesystem, so users can open it in their preferred code editor or terminal.
+- When the repo selection screen opens, the filter input should be focused so the user can start typing immediately without needing to click it first.
+- When selecting the screen size in the preview toolbar, there needs to be an indicator of which one is currently active (e.g. highlight the active preset, or show a checkmark, etc.)
 - Define next roadmap item

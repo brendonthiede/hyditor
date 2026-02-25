@@ -126,10 +126,11 @@
 <style>
   .editor {
     height: 100%;
-    display: grid;
-    grid-template-rows: auto auto 1fr;
+    display: flex;
+    flex-direction: column;
     padding: 0.75rem;
     gap: 0.5rem;
+    overflow-y: auto;
   }
 
   header {
@@ -162,7 +163,8 @@
 
   .editor-host {
     width: 100%;
-    height: 100%;
+    flex: 1;
+    min-height: 200px;
     border: 1px solid #30363d;
     background: transparent;
   }
