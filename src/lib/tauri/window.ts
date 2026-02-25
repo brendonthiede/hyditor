@@ -44,20 +44,29 @@ export async function openPreviewPopup(
     resizable: true,
   });
 
-  await new Promise<void>((resolve) => {
+  await new Promise<void>((resolve, reject) => {
     let settled = false;
-    const settle = () => {
+    // once() returns Promise<UnlistenFn>; fire-and-forget is fine here since
+    // the handler fires at most once and owns its own lifecycle cleanup.
+    void win.once('tauri://created', () => {
       if (!settled) {
         settled = true;
         resolve();
       }
-    };
-    // once() returns Promise<UnlistenFn>; we don't need to call unlisten since
-    // the handler fires at most once and the window owns its own lifecycle.
-    void win.once('tauri://created', settle);
-    void win.once('tauri://error', settle);
-    // Resolve after a generous timeout regardless, to avoid blocking the UI.
-    setTimeout(settle, 5000);
+    });
+    void win.once('tauri://error', (e) => {
+      if (!settled) {
+        settled = true;
+        reject(new Error(`Preview window failed to open: ${String(e.payload ?? e)}`));
+      }
+    });
+    // Safety-net timeout: resolve (not reject) so a delayed open still works.
+    setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve();
+      }
+    }, 5000);
   });
 }
 

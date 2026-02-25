@@ -9,13 +9,17 @@
       await closePreviewPopup();
       layout.setPreviewPoppedOut(false);
     } else {
-      const { mode, jekyllBaseUrl } = $previewState;
-      if (mode === 'jekyll' && jekyllBaseUrl) {
-        await openPreviewPopup({ mode: 'jekyll', url: jekyllBaseUrl });
-      } else {
-        await openPreviewPopup({ mode: 'instant' });
+      try {
+        const { mode, jekyllBaseUrl } = $previewState;
+        if (mode === 'jekyll' && jekyllBaseUrl) {
+          await openPreviewPopup({ mode: 'jekyll', url: jekyllBaseUrl });
+        } else {
+          await openPreviewPopup({ mode: 'instant' });
+        }
+        layout.setPreviewPoppedOut(true);
+      } catch (err) {
+        console.error('[PopOut] Failed to open preview window:', err);
       }
-      layout.setPreviewPoppedOut(true);
     }
   }
 </script>
