@@ -8,6 +8,7 @@
   import BranchSelector from '$lib/components/BranchSelector.svelte';
   import PRDialog from '$lib/components/PRDialog.svelte';
   import PanelResizeHandle from '$lib/components/PanelResizeHandle.svelte';
+  import { writeText as writeClipboardText } from '@tauri-apps/plugin-clipboard-manager';
   import { authState, loadAuthState, logOut } from '$lib/stores/auth';
   import { activeRepo, gitState, resetRepoSession } from '$lib/stores/repo';
   import { layout } from '$lib/stores/layout';
@@ -18,6 +19,7 @@
   let showSignOutPanel = false;
   let signOutBusy = false;
   let signOutError: string | null = null;
+  let pathCopied = false;
 
   $: authenticated = $authState.status === 'authenticated';
   $: stagedCount = $gitState.entries.filter((entry) => entry.staged).length;
@@ -61,6 +63,20 @@
     firstControl?.focus();
   }
 
+  async function copyRepoPath(): Promise<void> {
+    const path = $activeRepo?.localPath;
+    if (!path) return;
+    try {
+      await writeClipboardText(path);
+      pathCopied = true;
+      setTimeout(() => {
+        pathCopied = false;
+      }, 2000);
+    } catch {
+      // Silently ignore clipboard errors
+    }
+  }
+
   async function handleLocalSignOut(): Promise<void> {
     signOutBusy = true;
     signOutError = null;
@@ -95,6 +111,13 @@
       <div class="toolbar-actions">
         <button class="open-repo-btn" on:click={resetRepoSession}>
           Open a different repository
+        </button>
+        <button
+          class="copy-path-btn"
+          title={$activeRepo?.localPath ?? ''}
+          on:click={() => void copyRepoPath()}
+        >
+          {pathCopied ? 'Path copied!' : 'Copy repo path'}
         </button>
         <BranchSelector />
         <PRDialog />
@@ -377,6 +400,22 @@
 
   .open-repo-btn:hover,
   .open-repo-btn:focus-visible {
+    border-color: #8b949e;
+  }
+
+  .copy-path-btn {
+    border: 1px solid #30363d;
+    background: transparent;
+    color: inherit;
+    border-radius: 6px;
+    padding: 0.35rem 0.6rem;
+    cursor: pointer;
+    white-space: nowrap;
+    font-size: 0.85rem;
+  }
+
+  .copy-path-btn:hover,
+  .copy-path-btn:focus-visible {
     border-color: #8b949e;
   }
 
