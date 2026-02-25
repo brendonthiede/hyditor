@@ -37,6 +37,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Generate SvelteKit types
+        run: npx svelte-kit sync
+
       - name: Type check
         run: npm run check
 
@@ -79,8 +82,16 @@ jobs:
         with:
           workspaces: src-tauri
 
+      - name: Compile Rust tests
+        working-directory: src-tauri
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo test --no-run
+
       - name: Run Rust tests
         working-directory: src-tauri
+        env:
+          CARGO_TERM_COLOR: always
         run: cargo test -- --test-threads=1
 
   prepare:
