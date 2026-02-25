@@ -2,6 +2,22 @@
   import { activeRepo } from '$lib/stores/repo';
   import { previewState, setPreviewMode, setViewportPreset } from '$lib/stores/preview';
   import { layout } from '$lib/stores/layout';
+  import { openPreviewPopup, closePreviewPopup } from '$lib/tauri/window';
+
+  async function handlePopOut(): Promise<void> {
+    if ($layout.previewPoppedOut) {
+      await closePreviewPopup();
+      layout.setPreviewPoppedOut(false);
+    } else {
+      const { mode, jekyllBaseUrl } = $previewState;
+      if (mode === 'jekyll' && jekyllBaseUrl) {
+        await openPreviewPopup({ mode: 'jekyll', url: jekyllBaseUrl });
+      } else {
+        await openPreviewPopup({ mode: 'instant' });
+      }
+      layout.setPreviewPoppedOut(true);
+    }
+  }
 </script>
 
 <nav class="viewport-toolbar">
@@ -54,6 +70,16 @@
   >
     {$layout.previewFullscreen ? '⛶' : '⛶'}
     <span class="icon-label">{$layout.previewFullscreen ? 'Exit' : 'Full'}</span>
+  </button>
+
+  <button
+    class="icon-btn"
+    class:active={$layout.previewPoppedOut}
+    title={$layout.previewPoppedOut ? 'Close pop-out window' : 'Pop out to new window'}
+    on:click={() => void handlePopOut()}
+  >
+    ⧉
+    <span class="icon-label">{$layout.previewPoppedOut ? 'Close' : 'Pop Out'}</span>
   </button>
 
   <button

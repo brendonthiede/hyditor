@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
+  import { listen } from '@tauri-apps/api/event';
+  import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
   import ViewportToolbar from '$lib/components/ViewportToolbar.svelte';
   import { editorState } from '$lib/stores/editor';
   import { previewState, stopJekyllPreview } from '$lib/stores/preview';
@@ -7,6 +9,7 @@
   import { parseFrontmatter } from '$lib/utils/frontmatter';
   import { renderMarkdown } from '$lib/utils/markdown';
   import { jekyllUrlForFile } from '$lib/utils/jekyll';
+  import { PREVIEW_POPUP_LABEL, emitToPreviewPopup } from '$lib/tauri/window';
 
   $: parsed = parseFrontmatter($editorState.currentContent);
   $: rendered = renderMarkdown(parsed.content);
@@ -24,14 +27,55 @@
     return jekyllUrlForFile(jekyllBaseUrl, repoPath, absFile, $editorState.currentContent, sitePermalink);
   })();
 
+  // Push instant-mode content to the pop-out window whenever it changes.
+  $: if ($layout.previewPoppedOut && $previewState.mode === 'instant') {
+    void emitToPreviewPopup('preview-popup-update', {
+      html: rendered,
+      frontmatter: frontmatterEntries,
+    });
+  }
+
+  // Track the popup window reference to detect when user closes it via the OS.
+  let unlistenPopupDestroyed: (() => void) | null = null;
+  let unlistenPopupReady: (() => void) | null = null;
+
+  async function attachPopupCloseListener(): Promise<void> {
+    unlistenPopupDestroyed?.();
+    unlistenPopupDestroyed = null;
+    const win = await WebviewWindow.getByLabel(PREVIEW_POPUP_LABEL);
+    if (!win) return;
+    unlistenPopupDestroyed = await win.once('tauri://destroyed', () => {
+      layout.setPreviewPoppedOut(false);
+      unlistenPopupDestroyed = null;
+    });
+  }
+
+  $: if ($layout.previewPoppedOut) {
+    void attachPopupCloseListener();
+  }
+
   function onKeyDown(e: KeyboardEvent) {
     if (e.key === 'Escape' && $layout.previewFullscreen) {
       layout.togglePreviewFullscreen();
     }
   }
 
+  onMount(async () => {
+    // When the instant-mode popup signals it is ready, send the current content.
+    unlistenPopupReady = await listen('preview-popup-ready', () => {
+      if ($previewState.mode === 'instant') {
+        void emitToPreviewPopup('preview-popup-update', {
+          html: rendered,
+          frontmatter: frontmatterEntries,
+        });
+      }
+    });
+  });
+
   onDestroy(() => {
     void stopJekyllPreview();
+    unlistenPopupReady?.();
+    unlistenPopupDestroyed?.();
   });
 </script>
 

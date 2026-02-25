@@ -1,9 +1,13 @@
 {
   "identifier": "default",
   "description": "Default capability for Hyditor",
-  "windows": ["main"],
+  "windows": ["main", "preview-popup"],
   "permissions": [
     "core:default",
+    "core:window:allow-create",
+    "core:window:allow-close",
+    "core:event:allow-emit",
+    "core:event:allow-listen",
     "clipboard-manager:default",
     "clipboard-manager:allow-write-text",
     "mcp-bridge:default",

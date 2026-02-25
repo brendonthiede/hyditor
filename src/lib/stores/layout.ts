@@ -16,6 +16,8 @@ export interface LayoutState {
   /** 0‒1 fraction: editor share of height when preview is below */
   editorHeightSplit: number;
   previewFullscreen: boolean;
+  /** true while the preview pop-out WebviewWindow is open */
+  previewPoppedOut: boolean;
 }
 
 const DEFAULTS: LayoutState = {
@@ -28,6 +30,7 @@ const DEFAULTS: LayoutState = {
   previewPosition: 'side',
   editorHeightSplit: 0.55,
   previewFullscreen: false,
+  previewPoppedOut: false,
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -40,7 +43,7 @@ function loadFromStorage(): LayoutState {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULTS };
     const parsed = JSON.parse(raw) as Partial<LayoutState>;
-    return { ...DEFAULTS, ...parsed, previewFullscreen: false };
+    return { ...DEFAULTS, ...parsed, previewFullscreen: false, previewPoppedOut: false };
   } catch {
     return { ...DEFAULTS };
   }
@@ -49,8 +52,8 @@ function loadFromStorage(): LayoutState {
 function saveToStorage(state: LayoutState): void {
   if (!browser) return;
   try {
-    // Never persist fullscreen state
-    const { previewFullscreen: _fs, ...toSave } = state;
+    // Never persist transient overlay/popup state
+    const { previewFullscreen: _fs, previewPoppedOut: _po, ...toSave } = state;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
   } catch {
     // Ignore storage errors
@@ -82,6 +85,9 @@ function createLayoutStore() {
 
     togglePreviewFullscreen: () =>
       update((s) => ({ ...s, previewFullscreen: !s.previewFullscreen })),
+
+    setPreviewPoppedOut: (value: boolean) =>
+      update((s) => ({ ...s, previewPoppedOut: value })),
 
     setFileTreeWidth: (w: number) =>
       update((s) => ({ ...s, fileTreeWidth: clamp(w, 120, 600) })),
