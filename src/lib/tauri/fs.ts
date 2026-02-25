@@ -12,3 +12,17 @@ export async function readFile(path: string): Promise<string> {
 export async function writeFile(path: string, content: string): Promise<void> {
   await tauriInvoke('write_file_scoped', { path, content });
 }
+
+export interface SearchMatch {
+  line: number;
+  content: string;
+}
+
+export interface FileSearchResult {
+  file: string;
+  matches: SearchMatch[];
+}
+
+export async function searchRepoFiles(repoPath: string, query: string): Promise<FileSearchResult[]> {
+  return tauriInvoke<FileSearchResult[]>('search_repo_files', { repoPath, query });
+}

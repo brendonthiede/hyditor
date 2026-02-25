@@ -65,6 +65,118 @@ pub fn write_file_scoped(path: String, content: String) -> Result<(), String> {
     fs::write(target, content).map_err(|e| format!("failed to write file: {e}"))
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct SearchMatch {
+    pub line: usize,
+    pub content: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FileSearchResult {
+    pub file: String,
+    pub matches: Vec<SearchMatch>,
+}
+
+/// File extensions treated as binary – skipped during content search.
+const BINARY_EXTS: &[&str] = &[
+    "png", "jpg", "jpeg", "gif", "ico", "webp", "bmp", "tiff", "avif",
+    "woff", "woff2", "ttf", "eot", "otf",
+    "zip", "tar", "gz", "bz2", "br", "7z", "rar",
+    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+    "exe", "bin", "o", "so", "dylib", "a",
+    "mp4", "mp3", "mov", "avi", "wav", "ogg", "flac", "mid",
+    "pyc", "class", "wasm",
+];
+
+/// Maximum total matched lines returned across all files.
+const MAX_TOTAL_MATCHES: usize = 500;
+
+/// Maximum single-file size (bytes) eligible for content search (1 MiB).
+const MAX_FILE_BYTES: u64 = 1_048_576;
+
+/// Search all text files under `repo_path` for lines containing `query`
+/// (case-insensitive).  Returns up to `MAX_TOTAL_MATCHES` matched lines
+/// grouped by file.
+#[tauri::command]
+pub fn search_repo_files(repo_path: String, query: String) -> Result<Vec<FileSearchResult>, String> {
+    let q = query.trim().to_lowercase();
+    if q.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let repo = validate_scoped_path(Path::new(&repo_path))?;
+    let mut results: Vec<FileSearchResult> = Vec::new();
+    let mut total = 0usize;
+
+    'walk: for entry in WalkDir::new(&repo)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| {
+            e.file_name()
+                .to_str()
+                .map(|s| !matches!(s, ".git" | ".github" | ".vscode"))
+                .unwrap_or(true)
+        })
+        .filter_map(|e| e.ok())
+    {
+        if entry.file_type().is_dir() {
+            continue;
+        }
+
+        let path = entry.path();
+
+        // Skip known-binary extensions
+        let is_binary = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|ext| BINARY_EXTS.contains(&ext.to_lowercase().as_str()))
+            .unwrap_or(false);
+        if is_binary {
+            continue;
+        }
+
+        // Skip files larger than the limit
+        if entry.metadata().map(|m| m.len()).unwrap_or(0) > MAX_FILE_BYTES {
+            continue;
+        }
+
+        // Skip non-UTF-8 files silently
+        let text = match fs::read_to_string(path) {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+
+        let relative = path
+            .strip_prefix(&repo)
+            .map_err(|e| format!("strip prefix failed: {e}"))?
+            .to_string_lossy()
+            .to_string();
+
+        let file_matches: Vec<SearchMatch> = text
+            .lines()
+            .enumerate()
+            .filter(|(_, line)| line.to_lowercase().contains(&q))
+            .map(|(i, line)| SearchMatch {
+                line: i + 1,
+                content: line.trim_end().to_string(),
+            })
+            .collect();
+
+        if !file_matches.is_empty() {
+            total += file_matches.len();
+            results.push(FileSearchResult {
+                file: relative,
+                matches: file_matches,
+            });
+            if total >= MAX_TOTAL_MATCHES {
+                break 'walk;
+            }
+        }
+    }
+
+    Ok(results)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

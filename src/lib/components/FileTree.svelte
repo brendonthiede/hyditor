@@ -60,6 +60,7 @@
   import { editorState, fileTree } from '$lib/stores/editor';
   import { openRepoFile } from '$lib/stores/repo';
   import { layout } from '$lib/stores/layout';
+  import SearchPanel from '$lib/components/SearchPanel.svelte';
 
   /** When provided, this instance renders the given nodes (recursive child). */
   export let nodes: TreeNode[] | undefined = undefined;
@@ -144,7 +145,7 @@
     const q = query.trim().toLowerCase();
     if (q) {
       // Collect files/dirs whose name matches, plus all their ancestor dirs.
-      const keep = new Set<string>();
+      const keep = new SvelteSet<string>();
       for (const item of filtered) {
         const name = item.path.split('/').pop() ?? '';
         if (name.toLowerCase().includes(q)) {
@@ -178,8 +179,19 @@
 {#if isRoot}
   <section class="file-tree">
     <div class="file-tree-header">
-      <h3>Files</h3>
-      {#if $fileTree.length > 0}
+      <div class="blade-tabs">
+        <button
+          class="blade-tab"
+          class:active={$layout.leftPanelBlade === 'files'}
+          on:click={() => layout.setLeftPanelBlade('files')}
+        >Files</button>
+        <button
+          class="blade-tab"
+          class:active={$layout.leftPanelBlade === 'search'}
+          on:click={() => layout.setLeftPanelBlade('search')}
+        >Search</button>
+      </div>
+      {#if $layout.leftPanelBlade === 'files' && $fileTree.length > 0}
         <button class="icon-btn" title="Collapse all folders" on:click={collapseAll}>
           ⊟
         </button>
@@ -198,28 +210,33 @@
         ◀
       </button>
     </div>
-    {#if $fileTree.length > 0}
-      <div class="filter-row">
-        <input
-          class="filter-input"
-          type="search"
-          placeholder="Filter files…"
-          bind:value={$filterText}
-          aria-label="Filter files by name"
-        />
-      </div>
-      {#if !$showAll && hiddenCount > 0}
-        <p class="hidden-notice">
-          {hiddenCount} item{hiddenCount === 1 ? '' : 's'} hidden — <button class="inline-link" on:click={() => showAll.set(true)}>show all</button>
-        </p>
-      {/if}
-    {/if}
-    {#if $fileTree.length === 0}
-      <p>No files loaded.</p>
-    {:else if filteredItems.length === 0}
-      <p class="no-results">No files match.</p>
+
+    {#if $layout.leftPanelBlade === 'search'}
+      <SearchPanel />
     {:else}
-      <svelte:self nodes={displayNodes} />
+      {#if $fileTree.length > 0}
+        <div class="filter-row">
+          <input
+            class="filter-input"
+            type="search"
+            placeholder="Filter files…"
+            bind:value={$filterText}
+            aria-label="Filter files by name"
+          />
+        </div>
+        {#if !$showAll && hiddenCount > 0}
+          <p class="hidden-notice">
+            {hiddenCount} item{hiddenCount === 1 ? '' : 's'} hidden — <button class="inline-link" on:click={() => showAll.set(true)}>show all</button>
+          </p>
+        {/if}
+      {/if}
+      {#if $fileTree.length === 0}
+        <p>No files loaded.</p>
+      {:else if filteredItems.length === 0}
+        <p class="no-results">No files match.</p>
+      {:else}
+        <svelte:self nodes={displayNodes} />
+      {/if}
     {/if}
   </section>
 {:else}
@@ -262,8 +279,33 @@
     margin-bottom: 0.25rem;
   }
 
-  .file-tree-header h3 {
-    margin: 0;
+  .blade-tabs {
+    display: flex;
+    gap: 0;
+    flex-shrink: 0;
+  }
+
+  .blade-tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 500;
+    padding: 0.2rem 0.5rem 0.15rem;
+    opacity: 0.55;
+    transition: opacity 0.1s, border-color 0.1s;
+    border-radius: 0;
+  }
+
+  .blade-tab:hover {
+    opacity: 0.85;
+  }
+
+  .blade-tab.active {
+    opacity: 1;
+    border-bottom-color: #58a6ff;
   }
 
   .icon-btn {

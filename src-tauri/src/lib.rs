@@ -40,6 +40,7 @@ pub fn run() {
             fs::scoped::read_tree,
             fs::scoped::read_file_scoped,
             fs::scoped::write_file_scoped,
+            fs::scoped::search_repo_files,
             preview::jekyll::start_jekyll,
             preview::jekyll::stop_jekyll
         ])

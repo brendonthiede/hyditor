@@ -206,6 +206,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ Preview pop-out window: a "Pop Out" button in the preview toolbar opens the preview in a native Tauri `WebviewWindow` (ideal for second-monitor use); Jekyll mode opens the Jekyll dev server URL directly in the new window; Instant mode loads a standalone `/preview-window` route and receives live HTML updates via Tauri events as the user edits; closing the pop-out window (OS close button or toolbar "Close" button) automatically resets the pop-out state
 - ✅ Whitespace-only change detection: files whose working-tree diff (index → workdir) is entirely whitespace are marked `whitespace_only` in the backend; they are hidden from the Unstaged list by default and cannot be staged or committed; a "Show whitespace (N)" toggle in the Unstaged header reveals them (greyed out, checkboxes disabled) for reference; the backend `git_stage` command also rejects any staging attempt for whitespace-only files as a safety net
 - ✅ File tree filtering: a text input filters visible files by name (matching files and their ancestor directories are shown, all directories auto-expand while a query is active); a toggle button (`🔽` / `👁`) hides or reveals Jekyll-irrelevant directories (`node_modules`, `vendor`, `.bundle`, `_site`, `.sass-cache`, `.jekyll-cache`, `.jekyll-metadata`) and binary files (images, fonts, archives, etc.) — enabled by default with a "show all" notice showing the count of hidden items
+- ✅ Text search blade: the left panel has a blade toggle — **Files** (file tree) and **Search** (content search); the Search blade provides a debounced full-text search across all text files in the repo (`search_repo_files` Rust command); results are grouped by file with collapsible file groups (expand/collapse all buttons), per-match line numbers, inline keyword highlighting, and a match count badge per file; clicking any match opens that file in the editor; results are capped at 500 total matches to keep the UI responsive; binary files, files over 1 MiB, and `.git`/`.github`/`.vscode` directories are excluded
 
 ## Contributor Workflow
 
@@ -274,8 +275,7 @@ cd src-tauri && cargo test -- --test-threads=1
 
 ## Next Work
 
-- Add a text search to look for content across all text files in the repo. This should be a "blade" system like in VS Code, where you select whether you want to see the file list or the search results in the left panel.
-- Add a way to copy the path to where teh git repo is cached on the local filesystem, so users can open it in their preferred code editor or terminal.
+- Add a way to copy the path to where the git repo is cached on the local filesystem, so users can open it in their preferred code editor or terminal.
 - When the repo selection screen opens, the filter input should be focused so the user can start typing immediately without needing to click it first.
 - When selecting the screen size in the preview toolbar, there needs to be an indicator of which one is currently active (e.g. highlight the active preset, or show a checkmark, etc.)
 - Define next roadmap item

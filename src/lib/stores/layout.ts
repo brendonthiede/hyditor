@@ -18,6 +18,8 @@ export interface LayoutState {
   previewFullscreen: boolean;
   /** true while the preview pop-out WebviewWindow is open */
   previewPoppedOut: boolean;
+  /** Which blade is active in the left panel: 'files' or 'search' */
+  leftPanelBlade: 'files' | 'search';
 }
 
 const DEFAULTS: LayoutState = {
@@ -31,6 +33,7 @@ const DEFAULTS: LayoutState = {
   editorHeightSplit: 0.55,
   previewFullscreen: false,
   previewPoppedOut: false,
+  leftPanelBlade: 'files',
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -53,7 +56,7 @@ function saveToStorage(state: LayoutState): void {
   if (!browser) return;
   try {
     // Never persist transient overlay/popup state
-    const { previewFullscreen: _fs, previewPoppedOut: _po, ...toSave } = state;
+    const { previewFullscreen: _fs, previewPoppedOut: _po, leftPanelBlade: _lpb, ...toSave } = state;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
   } catch {
     // Ignore storage errors
@@ -100,6 +103,9 @@ function createLayoutStore() {
 
     setEditorHeightSplit: (v: number) =>
       update((s) => ({ ...s, editorHeightSplit: clamp(v, 0.15, 0.85) })),
+
+    setLeftPanelBlade: (blade: 'files' | 'search') =>
+      update((s) => ({ ...s, leftPanelBlade: blade })),
   };
 }
 
