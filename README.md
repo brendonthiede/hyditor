@@ -204,6 +204,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ "Open another repository" button in the toolbar header clears all repo/editor/git state and returns to the repository selection screen
 - ✅ Resizable, collapsible panels: drag the divider between any two panels to resize; click the collapse arrow in the FileTree/GitPanel header (or the collapsed strip) to toggle each panel; the preview panel adds position-toggle (side-by-side ↔ below editor) and fullscreen overlay (Escape to exit) buttons in its toolbar; layout sizes and collapsed state are persisted to `localStorage` across sessions
 - ✅ Preview pop-out window: a "Pop Out" button in the preview toolbar opens the preview in a native Tauri `WebviewWindow` (ideal for second-monitor use); Jekyll mode opens the Jekyll dev server URL directly in the new window; Instant mode loads a standalone `/preview-window` route and receives live HTML updates via Tauri events as the user edits; closing the pop-out window (OS close button or toolbar "Close" button) automatically resets the pop-out state
+- ✅ Whitespace-only change detection: files whose working-tree diff (index → workdir) is entirely whitespace are marked `whitespace_only` in the backend; they are hidden from the Unstaged list by default and cannot be staged or committed; a "Show whitespace (N)" toggle in the Unstaged header reveals them (greyed out, checkboxes disabled) for reference; the backend `git_stage` command also rejects any staging attempt for whitespace-only files as a safety net
 
 ## Contributor Workflow
 
@@ -272,7 +273,6 @@ cd src-tauri && cargo test -- --test-threads=1
 
 ## Next Work
 
-- If a file is only different in whitespace, ignore it in the git status and preview (optional toggle for showing whitespace diffs). Do not allow whitespace-only changes to be staged or committed.
 - Add a filter to the file list to hide files that are not relevant to Jekyll sites (e.g. node_modules, vendor, .bundle, etc.) and/or binary files that cannot be previewed (optional toggle for showing all files) and to filter to matching names.
 - Add a text search to look for content across all text files in the repo. This should be a "blade" system like in VS Code, where you select whether you want to see the file list or the search results in the left panel.
 - Add a way to copy the path to where teh git repo is cached on the local filesystem, so users can open it in their preferred code editor or terminal.

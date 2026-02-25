@@ -12,8 +12,15 @@
   let selectedForStage: string[] = [];
   let selectedForUnstage: string[] = [];
   let commitMessage = '';
+  let showWhitespaceDiffs = false;
 
-  $: unstagedEntries = $gitState.entries.filter((entry) => entry.unstaged || entry.untracked);
+  $: whitespaceOnlyCount = $gitState.entries.filter(
+    (entry) => (entry.unstaged || entry.untracked) && entry.whitespace_only
+  ).length;
+  $: unstagedEntries = $gitState.entries.filter(
+    (entry) =>
+      (entry.unstaged || entry.untracked) && (showWhitespaceDiffs || !entry.whitespace_only)
+  );
   $: stagedEntries = $gitState.entries.filter((entry) => entry.staged);
   $: hasStagedChanges = stagedEntries.length > 0;
 
@@ -72,17 +79,34 @@
   <section class="status-group">
     <div class="group-head">
       <h4>Unstaged</h4>
-      <button on:click={onStageSelected} disabled={$gitState.busy || selectedForStage.length === 0}>
-        Stage selected
-      </button>
+      <div class="group-actions">
+        {#if whitespaceOnlyCount > 0}
+          <button
+            class="ws-toggle"
+            title="{showWhitespaceDiffs ? 'Hide' : 'Show'} whitespace-only changes ({whitespaceOnlyCount})"
+            on:click={() => (showWhitespaceDiffs = !showWhitespaceDiffs)}
+          >
+            {showWhitespaceDiffs ? 'Hide' : 'Show'} whitespace ({whitespaceOnlyCount})
+          </button>
+        {/if}
+        <button on:click={onStageSelected} disabled={$gitState.busy || selectedForStage.length === 0}>
+          Stage selected
+        </button>
+      </div>
     </div>
     {#if unstagedEntries.length === 0}
-      <p class="empty">No unstaged changes.</p>
+      <p class="empty">
+        {#if whitespaceOnlyCount > 0 && !showWhitespaceDiffs}
+          No stageable changes ({whitespaceOnlyCount} whitespace-only hidden).
+        {:else}
+          No unstaged changes.
+        {/if}
+      </p>
     {:else}
       <ul class="files">
         {#each unstagedEntries as entry}
           <li>
-            <label>
+            <label class:whitespace-only={entry.whitespace_only}>
               <input
                 type="checkbox"
                 checked={selectedForStage.includes(entry.path)}
@@ -90,10 +114,10 @@
                   const checked = (event.currentTarget as HTMLInputElement).checked;
                   selectedForStage = toggleSelection(entry.path, selectedForStage, checked);
                 }}
-                disabled={$gitState.busy}
+                disabled={$gitState.busy || entry.whitespace_only}
               />
               <span class="path">{entry.path}</span>
-              <span class="tag">{entry.status}</span>
+              <span class="tag">{entry.whitespace_only ? 'whitespace' : entry.status}</span>
             </label>
           </li>
         {/each}
@@ -204,6 +228,27 @@
     justify-content: space-between;
     gap: 0.5rem;
     margin-bottom: 0.4rem;
+  }
+
+  .group-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .ws-toggle {
+    font-size: 0.75rem;
+    opacity: 0.65;
+    padding: 0.1rem 0.35rem;
+  }
+
+  .ws-toggle:hover {
+    opacity: 1;
+  }
+
+  label.whitespace-only {
+    opacity: 0.5;
+    font-style: italic;
   }
 
   .files {

@@ -8,6 +8,20 @@ pub struct GitStatusEntry {
     pub staged: bool,
     pub unstaged: bool,
     pub untracked: bool,
+    pub whitespace_only: bool,
+}
+
+/// Returns true if the only differences between the index and the working tree
+/// for `path` are whitespace changes (equivalent to `git diff -w -- <path>`
+/// producing no output).
+pub(crate) fn is_whitespace_only_diff(repo: &Repository, path: &str) -> bool {
+    let mut opts = DiffOptions::new();
+    opts.pathspec(path);
+    opts.ignore_whitespace(true);
+    match repo.diff_index_to_workdir(None, Some(&mut opts)) {
+        Ok(diff) => diff.deltas().count() == 0,
+        Err(_) => false,
+    }
 }
 
 fn derive_status_label(flags: git2::Status) -> String {
@@ -51,6 +65,17 @@ pub fn git_status(repo_path: String) -> Result<Vec<GitStatusEntry>, String> {
     for status in statuses.iter() {
         let flags = status.status();
         let path = status.path().unwrap_or_default().to_string();
+        let unstaged = flags.intersects(
+            git2::Status::WT_MODIFIED
+                | git2::Status::WT_DELETED
+                | git2::Status::WT_RENAMED
+                | git2::Status::WT_TYPECHANGE,
+        );
+        // A file is whitespace-only when it has unstaged working-tree
+        // modifications that all disappear when whitespace is ignored.
+        let whitespace_only = unstaged
+            && flags.is_wt_modified()
+            && is_whitespace_only_diff(&repo, &path);
         result.push(GitStatusEntry {
             path,
             status: derive_status_label(flags),
@@ -61,13 +86,9 @@ pub fn git_status(repo_path: String) -> Result<Vec<GitStatusEntry>, String> {
                     | git2::Status::INDEX_RENAMED
                     | git2::Status::INDEX_TYPECHANGE,
             ),
-            unstaged: flags.intersects(
-                git2::Status::WT_MODIFIED
-                    | git2::Status::WT_DELETED
-                    | git2::Status::WT_RENAMED
-                    | git2::Status::WT_TYPECHANGE,
-            ),
+            unstaged,
             untracked: flags.is_wt_new(),
+            whitespace_only,
         });
     }
 

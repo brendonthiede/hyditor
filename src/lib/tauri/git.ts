@@ -6,6 +6,7 @@ export type GitStatusEntry = {
   staged: boolean;
   unstaged: boolean;
   untracked: boolean;
+  whitespace_only: boolean;
 };
 
 export async function status(repoPath: string): Promise<GitStatusEntry[]> {

@@ -1,8 +1,27 @@
 use git2::{IndexAddOption, Repository, Signature};
+use crate::git::status::is_whitespace_only_diff;
 
 #[tauri::command]
 pub fn git_stage(repo_path: String, files: Vec<String>) -> Result<(), String> {
-    let repo = Repository::open(repo_path).map_err(|e| format!("failed to open repo: {e}"))?;
+    let repo = Repository::open(&repo_path).map_err(|e| format!("failed to open repo: {e}"))?;
+
+    // Reject any attempts to stage files that only differ in whitespace.
+    // The "stage all" path (files.is_empty()) bypasses this check because it
+    // is not exposed in the UI and iterating every file would be expensive.
+    if !files.is_empty() {
+        let ws_only: Vec<&str> = files
+            .iter()
+            .filter(|f| is_whitespace_only_diff(&repo, f))
+            .map(String::as_str)
+            .collect();
+        if !ws_only.is_empty() {
+            return Err(format!(
+                "cannot stage whitespace-only changes: {}",
+                ws_only.join(", ")
+            ));
+        }
+    }
+
     let mut index = repo.index().map_err(|e| format!("failed to open index: {e}"))?;
 
     if files.is_empty() {
