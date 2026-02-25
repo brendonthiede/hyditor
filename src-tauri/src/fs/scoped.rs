@@ -40,7 +40,7 @@ pub fn read_tree(repo_path: String) -> Result<Vec<TreeEntry>, String> {
             .strip_prefix(&repo)
             .map_err(|e| format!("strip prefix failed: {e}"))?
             .to_string_lossy()
-            .to_string();
+            .replace('\\', "/");
         entries.push(TreeEntry {
             path: relative,
             is_dir: entry.file_type().is_dir(),
@@ -150,7 +150,7 @@ pub fn search_repo_files(repo_path: String, query: String) -> Result<Vec<FileSea
             .strip_prefix(&repo)
             .map_err(|e| format!("strip prefix failed: {e}"))?
             .to_string_lossy()
-            .to_string();
+            .replace('\\', "/");
 
         let file_matches: Vec<SearchMatch> = text
             .lines()

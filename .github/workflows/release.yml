@@ -26,7 +26,13 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - run: npm ci
+      - name: Configure npm retries
+        run: |
+          npm config set fetch-retries 5
+          npm config set fetch-retry-mintimeout 20000
+          npm config set fetch-retry-maxtimeout 120000
+
+      - run: npm ci --no-audit
 
       - name: Lint
         run: npm run lint
@@ -120,7 +126,13 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - run: npm ci
+      - name: Configure npm retries
+        run: |
+          npm config set fetch-retries 5
+          npm config set fetch-retry-mintimeout 20000
+          npm config set fetch-retry-maxtimeout 120000
+
+      - run: npm ci --no-audit
 
       - name: Install Linux system dependencies
         run: |
@@ -188,7 +200,13 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - run: npm ci
+      - name: Configure npm retries
+        run: |
+          npm config set fetch-retries 5
+          npm config set fetch-retry-mintimeout 20000
+          npm config set fetch-retry-maxtimeout 120000
+
+      - run: npm ci --no-audit
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -241,7 +259,13 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - run: npm ci
+      - name: Configure npm retries
+        run: |
+          npm config set fetch-retries 5
+          npm config set fetch-retry-mintimeout 20000
+          npm config set fetch-retry-maxtimeout 120000
+
+      - run: npm ci --no-audit
 
       - uses: dtolnay/rust-toolchain@stable
 
