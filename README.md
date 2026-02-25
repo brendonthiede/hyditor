@@ -208,7 +208,9 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ File tree filtering: a text input filters visible files by name (matching files and their ancestor directories are shown, all directories auto-expand while a query is active); a toggle button (`🔽` / `👁`) hides or reveals Jekyll-irrelevant directories (`node_modules`, `vendor`, `.bundle`, `_site`, `.sass-cache`, `.jekyll-cache`, `.jekyll-metadata`) and binary files (images, fonts, archives, etc.) — enabled by default with a "show all" notice showing the count of hidden items
 - ✅ Text search blade: the left panel has a blade toggle — **Files** (file tree) and **Search** (content search); the Search blade provides a debounced full-text search across all text files in the repo (`search_repo_files` Rust command); results are grouped by file with collapsible file groups (expand/collapse all buttons), per-match line numbers, inline keyword highlighting, and a match count badge per file; clicking any match opens that file in the editor; results are capped at 500 total matches to keep the UI responsive; binary files, files over 1 MiB, and `.git`/`.github`/`.vscode` directories are excluded
 - ✅ Git panel moved into the left sidebar: the blade toggle now has three tabs — **Files**, **Search**, and **Git** — replacing the separate right-side Git panel; clicking the Git badge in the toolbar expands the left panel and switches to the Git blade
+- ✅ Repo filter autofocus: when the repository selection screen opens, the filter input is automatically focused so the user can start typing immediately without clicking it first
 - ✅ "Copy repo path" button in the toolbar copies the local cache path of the active repository to the clipboard; the button briefly shows "Path copied!" as feedback, and its tooltip always shows the full path — lets users jump directly to the repo in their preferred code editor or terminal
+- ✅ Preview viewport active indicator: the currently selected viewport preset button (Desktop / Tablet / Mobile) is highlighted with the active style so users can see which size is selected at a glance
 
 ## Contributor Workflow
 
@@ -277,6 +279,4 @@ cd src-tauri && cargo test -- --test-threads=1
 
 ## Next Work
 
-- When the repo selection screen opens, the filter input should be focused so the user can start typing immediately without needing to click it first.
-- When selecting the screen size in the preview toolbar, there needs to be an indicator of which one is currently active (e.g. highlight the active preset, or show a checkmark, etc.)
 - Define next roadmap item

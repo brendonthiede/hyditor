@@ -24,6 +24,11 @@
   $: pageStart = currentPage * PAGE_SIZE;
   $: pageRepos = filteredRepos.slice(pageStart, pageStart + PAGE_SIZE);
 
+  function autoFocus(node: HTMLElement) {
+    node.focus();
+    return {};
+  }
+
   onMount(() => {
     void loadRepos();
     const unlisten = listen('clone_progress', (event) => {
@@ -49,6 +54,7 @@
           placeholder="Filter repositories…"
           bind:value={filterText}
           aria-label="Filter repositories"
+          use:autoFocus
         />
         <span class="repo-count">
           {filteredRepos.length} / {$repoList.length}

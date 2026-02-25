@@ -14,6 +14,7 @@ const PRESETS: Record<Preset, { width: number; height: number }> = {
 export const previewState = writable<{
   mode: 'instant' | 'jekyll';
   viewport: { width: number; height: number };
+  viewportPreset: Preset;
   jekyllBaseUrl: string | null;
   repoPath: string | null;
   sitePermalink: string;
@@ -22,6 +23,7 @@ export const previewState = writable<{
 }>({
   mode: 'instant',
   viewport: PRESETS.desktop,
+  viewportPreset: 'desktop',
   jekyllBaseUrl: null,
   repoPath: null,
   sitePermalink: 'date',
@@ -30,7 +32,7 @@ export const previewState = writable<{
 });
 
 export function setViewportPreset(preset: Preset): void {
-  previewState.update((state) => ({ ...state, viewport: PRESETS[preset] }));
+  previewState.update((state) => ({ ...state, viewport: PRESETS[preset], viewportPreset: preset }));
 }
 
 async function loadSitePermalink(repoPath: string): Promise<string> {

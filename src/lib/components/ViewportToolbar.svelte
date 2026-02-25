@@ -47,9 +47,9 @@
   <span class="divider" aria-hidden="true"></span>
 
   <!-- Viewport presets -->
-  <button on:click={() => setViewportPreset('desktop')}>Desktop</button>
-  <button on:click={() => setViewportPreset('tablet')}>Tablet</button>
-  <button on:click={() => setViewportPreset('mobile')}>Mobile</button>
+  <button class:active={$previewState.viewportPreset === 'desktop'} on:click={() => setViewportPreset('desktop')}>Desktop</button>
+  <button class:active={$previewState.viewportPreset === 'tablet'} on:click={() => setViewportPreset('tablet')}>Tablet</button>
+  <button class:active={$previewState.viewportPreset === 'mobile'} on:click={() => setViewportPreset('mobile')}>Mobile</button>
   <span class="dim">{$previewState.viewport.width}×{$previewState.viewport.height}</span>
 
   {#if $previewState.loading}
