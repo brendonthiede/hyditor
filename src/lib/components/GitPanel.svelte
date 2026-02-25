@@ -7,7 +7,6 @@
     stageFiles,
     unstageFiles
   } from '$lib/stores/repo';
-  import { layout } from '$lib/stores/layout';
 
   let selectedForStage: string[] = [];
   let selectedForUnstage: string[] = [];
@@ -69,9 +68,6 @@
 
 <section class="git">
   <header>
-    <button class="panel-collapse-btn" title="Collapse git panel" on:click={() => layout.toggleGitPanel()}>
-      ▶
-    </button>
     <h3>Git</h3>
     <button on:click={refreshGitStatus} disabled={$gitState.busy}>Refresh</button>
   </header>
@@ -192,24 +188,6 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: 0.75rem;
-  }
-
-  .panel-collapse-btn {
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    color: inherit;
-    cursor: pointer;
-    font-size: 0.8rem;
-    line-height: 1;
-    padding: 0.15rem 0.35rem;
-    opacity: 0.6;
-    flex-shrink: 0;
-  }
-
-  .panel-collapse-btn:hover {
-    border-color: #30363d;
-    opacity: 1;
   }
 
   h4 {

@@ -4,7 +4,6 @@
   import FileTree from '$lib/components/FileTree.svelte';
   import Editor from '$lib/components/Editor.svelte';
   import Preview from '$lib/components/Preview.svelte';
-  import GitPanel from '$lib/components/GitPanel.svelte';
   import BranchSelector from '$lib/components/BranchSelector.svelte';
   import PRDialog from '$lib/components/PRDialog.svelte';
   import PanelResizeHandle from '$lib/components/PanelResizeHandle.svelte';
@@ -14,7 +13,6 @@
   import { layout } from '$lib/stores/layout';
   import { onMount } from 'svelte';
 
-  let gitPanelEl: HTMLElement | null = null;
   let centerEl: HTMLElement | null = null;
   let showSignOutPanel = false;
   let signOutBusy = false;
@@ -49,18 +47,10 @@
   }
 
   function focusGitPanel(): void {
-    // Expand the git panel first if it is collapsed
-    if ($layout.gitPanelCollapsed) layout.toggleGitPanel();
-
-    if (!gitPanelEl) {
-      return;
-    }
-
-    gitPanelEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-    const firstControl = gitPanelEl.querySelector<HTMLButtonElement | HTMLInputElement | HTMLTextAreaElement>(
-      'button, input, textarea'
-    );
-    firstControl?.focus();
+    // Expand the left panel first if it is collapsed
+    if ($layout.fileTreeCollapsed) layout.toggleFileTree();
+    // Switch to the git blade
+    layout.setLeftPanelBlade('git');
   }
 
   async function copyRepoPath(): Promise<void> {
@@ -209,28 +199,6 @@
           </div>
         {/if}
       </div>
-
-      <!-- Git panel: collapsed tab or expanded panel -->
-      {#if $layout.gitPanelCollapsed}
-        <div
-          class="panel-tab panel-tab--right"
-          role="button"
-          tabindex="0"
-          title="Expand git panel"
-          on:click={() => layout.toggleGitPanel()}
-          on:keydown={(e) => e.key === 'Enter' && layout.toggleGitPanel()}
-        >
-          <span>Git</span>
-        </div>
-      {:else}
-        <PanelResizeHandle
-          orientation="horizontal"
-          onDrag={(delta) => layout.setGitPanelWidth($layout.gitPanelWidth - delta)}
-        />
-        <aside class="panel git-panel" style="width: {$layout.gitPanelWidth}px" bind:this={gitPanelEl}>
-          <GitPanel />
-        </aside>
-      {/if}
     </section>
   </main>
 {/if}
@@ -301,10 +269,6 @@
     border-right: 1px solid #30363d;
   }
 
-  .git-panel {
-    border-left: 1px solid #30363d;
-  }
-
   /* Collapsed panel tabs (vertical strips) */
   .panel-tab {
     display: flex;
@@ -330,11 +294,6 @@
   .panel-tab:hover {
     opacity: 1;
     background: #161b22;
-  }
-
-  .panel-tab--right {
-    border-right: none;
-    border-left: 1px solid #30363d;
   }
 
   /* Preview collapsed tab inside the center area */

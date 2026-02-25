@@ -6,8 +6,6 @@ const STORAGE_KEY = 'hyditor-layout-v1';
 export interface LayoutState {
   fileTreeWidth: number;
   fileTreeCollapsed: boolean;
-  gitPanelWidth: number;
-  gitPanelCollapsed: boolean;
   /** 0‒1 fraction: editor share when preview is side-by-side */
   centerSplit: number;
   previewCollapsed: boolean;
@@ -18,15 +16,13 @@ export interface LayoutState {
   previewFullscreen: boolean;
   /** true while the preview pop-out WebviewWindow is open */
   previewPoppedOut: boolean;
-  /** Which blade is active in the left panel: 'files' or 'search' */
-  leftPanelBlade: 'files' | 'search';
+  /** Which blade is active in the left panel: 'files', 'search', or 'git' */
+  leftPanelBlade: 'files' | 'search' | 'git';
 }
 
 const DEFAULTS: LayoutState = {
   fileTreeWidth: 260,
   fileTreeCollapsed: false,
-  gitPanelWidth: 320,
-  gitPanelCollapsed: false,
   centerSplit: 0.5,
   previewCollapsed: false,
   previewPosition: 'side',
@@ -76,8 +72,6 @@ function createLayoutStore() {
 
     toggleFileTree: () => update((s) => ({ ...s, fileTreeCollapsed: !s.fileTreeCollapsed })),
 
-    toggleGitPanel: () => update((s) => ({ ...s, gitPanelCollapsed: !s.gitPanelCollapsed })),
-
     togglePreview: () => update((s) => ({ ...s, previewCollapsed: !s.previewCollapsed })),
 
     togglePreviewPosition: () =>
@@ -95,16 +89,13 @@ function createLayoutStore() {
     setFileTreeWidth: (w: number) =>
       update((s) => ({ ...s, fileTreeWidth: clamp(w, 120, 600) })),
 
-    setGitPanelWidth: (w: number) =>
-      update((s) => ({ ...s, gitPanelWidth: clamp(w, 180, 700) })),
-
     setCenterSplit: (v: number) =>
       update((s) => ({ ...s, centerSplit: clamp(v, 0.15, 0.85) })),
 
     setEditorHeightSplit: (v: number) =>
       update((s) => ({ ...s, editorHeightSplit: clamp(v, 0.15, 0.85) })),
 
-    setLeftPanelBlade: (blade: 'files' | 'search') =>
+    setLeftPanelBlade: (blade: 'files' | 'search' | 'git') =>
       update((s) => ({ ...s, leftPanelBlade: blade })),
   };
 }

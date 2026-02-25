@@ -61,6 +61,7 @@
   import { openRepoFile } from '$lib/stores/repo';
   import { layout } from '$lib/stores/layout';
   import SearchPanel from '$lib/components/SearchPanel.svelte';
+  import GitPanel from '$lib/components/GitPanel.svelte';
 
   /** When provided, this instance renders the given nodes (recursive child). */
   export let nodes: TreeNode[] | undefined = undefined;
@@ -190,6 +191,11 @@
           class:active={$layout.leftPanelBlade === 'search'}
           on:click={() => layout.setLeftPanelBlade('search')}
         >Search</button>
+        <button
+          class="blade-tab"
+          class:active={$layout.leftPanelBlade === 'git'}
+          on:click={() => layout.setLeftPanelBlade('git')}
+        >Git</button>
       </div>
       {#if $layout.leftPanelBlade === 'files' && $fileTree.length > 0}
         <button class="icon-btn" title="Collapse all folders" on:click={collapseAll}>
@@ -213,6 +219,8 @@
 
     {#if $layout.leftPanelBlade === 'search'}
       <SearchPanel />
+    {:else if $layout.leftPanelBlade === 'git'}
+      <GitPanel />
     {:else}
       {#if $fileTree.length > 0}
         <div class="filter-row">
