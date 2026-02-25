@@ -3,6 +3,7 @@
   import ViewportToolbar from '$lib/components/ViewportToolbar.svelte';
   import { editorState } from '$lib/stores/editor';
   import { previewState, stopJekyllPreview } from '$lib/stores/preview';
+  import { layout } from '$lib/stores/layout';
   import { parseFrontmatter } from '$lib/utils/frontmatter';
   import { renderMarkdown } from '$lib/utils/markdown';
   import { jekyllUrlForFile } from '$lib/utils/jekyll';
@@ -23,12 +24,20 @@
     return jekyllUrlForFile(jekyllBaseUrl, repoPath, absFile, $editorState.currentContent, sitePermalink);
   })();
 
+  function onKeyDown(e: KeyboardEvent) {
+    if (e.key === 'Escape' && $layout.previewFullscreen) {
+      layout.togglePreviewFullscreen();
+    }
+  }
+
   onDestroy(() => {
     void stopJekyllPreview();
   });
 </script>
 
-<section class="preview">
+<svelte:window on:keydown={onKeyDown} />
+
+<section class="preview" class:fullscreen={$layout.previewFullscreen}>
   <ViewportToolbar />
   {#if $previewState.error}
     <p class="error">{$previewState.error}</p>
@@ -62,6 +71,15 @@
     display: grid;
     grid-template-rows: auto 1fr;
     overflow: hidden;
+  }
+
+  /* Fullscreen overlay — covers the entire window on top of everything */
+  .preview.fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: #0d1117;
+    height: 100dvh;
   }
 
   .error {

@@ -7,11 +7,14 @@
   import GitPanel from '$lib/components/GitPanel.svelte';
   import BranchSelector from '$lib/components/BranchSelector.svelte';
   import PRDialog from '$lib/components/PRDialog.svelte';
+  import PanelResizeHandle from '$lib/components/PanelResizeHandle.svelte';
   import { authState, loadAuthState, logOut } from '$lib/stores/auth';
   import { activeRepo, gitState, resetRepoSession } from '$lib/stores/repo';
+  import { layout } from '$lib/stores/layout';
   import { onMount } from 'svelte';
 
   let gitPanelEl: HTMLElement | null = null;
+  let centerEl: HTMLElement | null = null;
   let showSignOutPanel = false;
   let signOutBusy = false;
   let signOutError: string | null = null;
@@ -20,7 +23,33 @@
   $: stagedCount = $gitState.entries.filter((entry) => entry.staged).length;
   $: unstagedCount = $gitState.entries.filter((entry) => entry.unstaged || entry.untracked).length;
 
+  // Reactive flex-grow style for the editor pane inside the center area
+  $: editorPaneStyle = $layout.previewCollapsed
+    ? 'flex: 1; min-width: 0; min-height: 0; overflow: hidden;'
+    : $layout.previewPosition === 'side'
+      ? `flex: ${$layout.centerSplit}; min-width: 0; overflow: hidden;`
+      : `flex: ${$layout.editorHeightSplit}; min-width: 0; overflow: hidden;`;
+
+  $: previewPaneStyle =
+    $layout.previewPosition === 'side'
+      ? `flex: ${1 - $layout.centerSplit}; min-width: 0; overflow: hidden;`
+      : `flex: ${1 - $layout.editorHeightSplit}; min-width: 0; overflow: hidden;`;
+
+  function handleCenterDrag(delta: number): void {
+    if (!centerEl) return;
+    if ($layout.previewPosition === 'side') {
+      const totalWidth = centerEl.offsetWidth;
+      layout.setCenterSplit(($layout.centerSplit * totalWidth + delta) / totalWidth);
+    } else {
+      const totalHeight = centerEl.offsetHeight;
+      layout.setEditorHeightSplit(($layout.editorHeightSplit * totalHeight + delta) / totalHeight);
+    }
+  }
+
   function focusGitPanel(): void {
+    // Expand the git panel first if it is collapsed
+    if ($layout.gitPanelCollapsed) layout.toggleGitPanel();
+
     if (!gitPanelEl) {
       return;
     }
@@ -99,10 +128,86 @@
       </div>
     </header>
     <section class="panels">
-      <aside class="file-tree"><FileTree /></aside>
-      <div class="editor"><Editor /></div>
-      <div class="preview"><Preview /></div>
-      <aside class="git" bind:this={gitPanelEl}><GitPanel /></aside>
+      <!-- File tree: collapsed tab or expanded panel -->
+      {#if $layout.fileTreeCollapsed}
+        <div
+          class="panel-tab"
+          role="button"
+          tabindex="0"
+          title="Expand file panel"
+          on:click={() => layout.toggleFileTree()}
+          on:keydown={(e) => e.key === 'Enter' && layout.toggleFileTree()}
+        >
+          <span>Files</span>
+        </div>
+      {:else}
+        <aside class="panel file-panel" style="width: {$layout.fileTreeWidth}px">
+          <FileTree />
+        </aside>
+        <PanelResizeHandle
+          orientation="horizontal"
+          onDrag={(delta) => layout.setFileTreeWidth($layout.fileTreeWidth + delta)}
+        />
+      {/if}
+
+      <!-- Center area: editor + preview (side-by-side or stacked) -->
+      <div
+        class="center-area"
+        class:preview-below={$layout.previewPosition === 'below'}
+        bind:this={centerEl}
+      >
+        <!-- Editor pane -->
+        <div class="editor-pane" style={editorPaneStyle}>
+          <Editor />
+        </div>
+
+        {#if $layout.previewCollapsed}
+          <!-- Collapsed preview strip -->
+          <div
+            class="panel-tab preview-tab"
+            class:preview-tab--vertical={$layout.previewPosition === 'side'}
+            class:preview-tab--horizontal={$layout.previewPosition === 'below'}
+            role="button"
+            tabindex="0"
+            title="Expand preview panel"
+            on:click={() => layout.togglePreview()}
+            on:keydown={(e) => e.key === 'Enter' && layout.togglePreview()}
+          >
+            <span>Preview</span>
+          </div>
+        {:else}
+          <PanelResizeHandle
+            orientation={$layout.previewPosition === 'side' ? 'horizontal' : 'vertical'}
+            onDrag={handleCenterDrag}
+          />
+          <!-- Preview pane -->
+          <div class="preview-pane" style={previewPaneStyle}>
+            <Preview />
+          </div>
+        {/if}
+      </div>
+
+      <!-- Git panel: collapsed tab or expanded panel -->
+      {#if $layout.gitPanelCollapsed}
+        <div
+          class="panel-tab panel-tab--right"
+          role="button"
+          tabindex="0"
+          title="Expand git panel"
+          on:click={() => layout.toggleGitPanel()}
+          on:keydown={(e) => e.key === 'Enter' && layout.toggleGitPanel()}
+        >
+          <span>Git</span>
+        </div>
+      {:else}
+        <PanelResizeHandle
+          orientation="horizontal"
+          onDrag={(delta) => layout.setGitPanelWidth($layout.gitPanelWidth - delta)}
+        />
+        <aside class="panel git-panel" style="width: {$layout.gitPanelWidth}px" bind:this={gitPanelEl}>
+          <GitPanel />
+        </aside>
+      {/if}
     </section>
   </main>
 {/if}
@@ -154,11 +259,99 @@
   }
 
   .panels {
-    display: grid;
-    grid-template-columns: 260px 1fr 1fr 320px;
-    gap: 0;
+    display: flex;
+    flex-direction: row;
     flex: 1;
     min-height: 0;
+    overflow: hidden;
+  }
+
+  /* File tree / git panel expanded */
+  .panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .file-panel {
+    border-right: 1px solid #30363d;
+  }
+
+  .git-panel {
+    border-left: 1px solid #30363d;
+  }
+
+  /* Collapsed panel tabs (vertical strips) */
+  .panel-tab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    flex-shrink: 0;
+    cursor: pointer;
+    border-right: 1px solid #30363d;
+    user-select: none;
+    font-size: 0.75rem;
+    opacity: 0.65;
+    transition: opacity 0.15s, background 0.15s;
+    overflow: hidden;
+  }
+
+  .panel-tab span {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    white-space: nowrap;
+  }
+
+  .panel-tab:hover {
+    opacity: 1;
+    background: #161b22;
+  }
+
+  .panel-tab--right {
+    border-right: none;
+    border-left: 1px solid #30363d;
+  }
+
+  /* Preview collapsed tab inside the center area */
+  .preview-tab--vertical {
+    width: 28px;
+    height: 100%;
+    border-left: 1px solid #30363d;
+    border-right: none;
+  }
+
+  .preview-tab--horizontal {
+    width: 100%;
+    height: 28px;
+    writing-mode: horizontal-tb;
+    border-top: 1px solid #30363d;
+  }
+
+  .preview-tab--horizontal span {
+    writing-mode: horizontal-tb;
+  }
+
+  /* Center area holds editor + preview */
+  .center-area {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .center-area.preview-below {
+    flex-direction: column;
+  }
+
+  .editor-pane,
+  .preview-pane {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .toolbar-actions {
@@ -232,16 +425,5 @@
     color: #f85149;
   }
 
-  .file-tree,
-  .editor,
-  .preview,
-  .git {
-    border-right: 1px solid #30363d;
-    min-width: 0;
-    overflow: hidden;
-  }
 
-  .git {
-    border-right: 0;
-  }
 </style>

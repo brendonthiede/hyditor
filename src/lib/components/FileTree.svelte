@@ -15,6 +15,7 @@
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import { editorState, fileTree } from '$lib/stores/editor';
   import { openRepoFile } from '$lib/stores/repo';
+  import { layout } from '$lib/stores/layout';
 
   /** When provided, this instance renders the given nodes (recursive child). */
   export let nodes: TreeNode[] | undefined = undefined;
@@ -95,6 +96,9 @@
           ⊟
         </button>
       {/if}
+      <button class="panel-collapse-btn" title="Collapse file panel" on:click={() => layout.toggleFileTree()}>
+        ◀
+      </button>
     </div>
     {#if $fileTree.length === 0}
       <p>No files loaded.</p>
@@ -159,6 +163,24 @@
   }
 
   .collapse-all-btn:hover {
+    border-color: #30363d;
+    opacity: 1;
+  }
+
+  .panel-collapse-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: inherit;
+    cursor: pointer;
+    font-size: 0.8rem;
+    line-height: 1;
+    padding: 0.15rem 0.35rem;
+    opacity: 0.6;
+    margin-left: auto;
+  }
+
+  .panel-collapse-btn:hover {
     border-color: #30363d;
     opacity: 1;
   }

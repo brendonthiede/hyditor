@@ -202,6 +202,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ Preview viewport scrollbars: the preview canvas scrolls when the selected viewport (Desktop/Tablet/Mobile) is larger than the panel, preserving the exact chosen width/height so responsive breakpoints are rendered correctly
 - ✅ Editor scrollbar: vertical scrollbar enabled on the CodeMirror scroller (`overflow-y: auto`); horizontal scroll suppressed while word-wrap is on (`overflow-x: hidden`) — comment in source notes where to update this when a word-wrap toggle is added
 - ✅ "Open another repository" button in the toolbar header clears all repo/editor/git state and returns to the repository selection screen
+- ✅ Resizable, collapsible panels: drag the divider between any two panels to resize; click the collapse arrow in the FileTree/GitPanel header (or the collapsed strip) to toggle each panel; the preview panel adds position-toggle (side-by-side ↔ below editor) and fullscreen overlay (Escape to exit) buttons in its toolbar; layout sizes and collapsed state are persisted to `localStorage` across sessions
 
 ## Contributor Workflow
 
@@ -270,7 +271,7 @@ cd src-tauri && cargo test -- --test-threads=1
 
 ## Next Work
 
-- The different "panels" should be able to be resized, collapsed, and rearranged by the user (e.g. drag to resize the file explorer width, collapse the Git panel when not in use, drag the preview to the right side instead of below the editor, etc.). The preview panel should also have a fullscreen toggle to maximize the preview area when needed, perhaps popping out to a new window.
+- The preview panel fullscreen mode should support popping out to a new native window (Tauri `WebviewWindow`) as an alternative to the in-app overlay, for users who want to view the preview on a second monitor.
 - If a file is only different in whitespace, ignore it in the git status and preview (optional toggle for showing whitespace diffs). Do not allow whitespace-only changes to be staged or committed.
 - Add a filter to the file list to hide files that are not relevant to Jekyll sites (e.g. node_modules, vendor, .bundle, etc.) and/or binary files that cannot be previewed (optional toggle for showing all files) and to filter to matching names.
 - Manual testing and validation of implemented features with various GitHub accounts, repo configurations, and edge cases (token expiry, revoked tokens, 2FA accounts, large repos, etc.)
