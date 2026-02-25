@@ -1,5 +1,7 @@
 # Hyditor
 
+<img src="src-tauri/app-icon.png" alt="Hyditor logo" width="128" />
+
 Secure, desktop-native editor and previewer for Jekyll sites on GitHub Pages.
 
 ## Status
@@ -276,6 +278,28 @@ cd src-tauri && cargo test -- --test-threads=1
 - Tokens are persisted between app sessions and refreshed automatically before expiry.
 - An in-memory `StoredToken` cache (`TOKEN_CACHE`) avoids repeated Stronghold snapshot reads.  The cache is populated on first `get_stored_token` call and invalidated on `set_token` / `sign_out`.  Diagnostic timing logs (`[Stronghold]`, `[Keychain]`) are emitted to stderr on cache-miss paths to aid future profiling.
 - If Stronghold snapshot decryption fails (for example due to stale/corrupted local snapshot state), Hyditor removes the corrupt snapshot and shows the sign-in screen without retrying the expensive key-derivation step.
+
+## App Icon
+
+The source icon is `src-tauri/app-icon.png` — a square, transparent-background PNG at 1024×1024 px.
+
+All platform icons in `src-tauri/icons/` are generated from it and should never be edited manually. To regenerate after updating the source:
+
+```bash
+npx tauri icon src-tauri/app-icon.png
+```
+
+Generated outputs:
+
+| File(s) | Platform |
+|---|---|
+| `32x32.png`, `64x64.png`, `128x128.png`, `128x128@2x.png` | Linux |
+| `icon.icns` | macOS |
+| `icon.ico` | Windows (embeds 16/32/48/256 px layers) |
+| `Square*Logo.png`, `StoreLogo.png` | Windows MSIX/Store |
+| `icons/android/`, `icons/ios/` | Mobile (future targets) |
+
+For in-app UI use (e.g. the auth screen), place SVG or PNG assets under `src/lib/assets/` and import them directly in Svelte components.
 
 ## Next Work
 
