@@ -7,6 +7,7 @@
   import BranchSelector from '$lib/components/BranchSelector.svelte';
   import PanelResizeHandle from '$lib/components/PanelResizeHandle.svelte';
   import { writeText as writeClipboardText } from '@tauri-apps/plugin-clipboard-manager';
+  import { openUrl } from '@tauri-apps/plugin-opener';
   import { authState, loadAuthState, logOut } from '$lib/stores/auth';
   import { activeRepo, gitState, resetRepoSession, restoreLastSession } from '$lib/stores/repo';
   import { layout } from '$lib/stores/layout';
@@ -51,6 +52,17 @@
     if ($layout.fileTreeCollapsed) layout.toggleFileTree();
     // Switch to the git blade
     layout.setLeftPanelBlade('git');
+  }
+
+  async function openRepoOnGitHub(): Promise<void> {
+    const repo = $activeRepo;
+    if (!repo) return;
+    const url = `https://github.com/${repo.owner}/${repo.name}`;
+    try {
+      await openUrl(url);
+    } catch {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
   }
 
   async function copyRepoPath(): Promise<void> {
@@ -116,16 +128,47 @@
         </button>
       </div>
       <div class="toolbar-actions">
-        <button class="open-repo-btn" on:click={resetRepoSession}>
-          Open a different repository
-        </button>
-        <button
-          class="copy-path-btn"
-          title={$activeRepo?.localPath ?? ''}
-          on:click={() => void copyRepoPath()}
-        >
-          {pathCopied ? 'Path copied!' : 'Copy repo path'}
-        </button>
+        <div class="repo-group">
+          <span class="repo-name">{$activeRepo.owner}/{$activeRepo.name}</span>
+          <button
+            class="icon-btn"
+            title="Open on GitHub"
+            on:click={() => void openRepoOnGitHub()}
+          >
+            <!-- External link icon (GitHub) -->
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M3.75 2A1.75 1.75 0 002 3.75v8.5c0 .966.784 1.75 1.75 1.75h8.5A1.75 1.75 0 0014 12.25v-3.5a.75.75 0 00-1.5 0v3.5a.25.25 0 01-.25.25h-8.5a.25.25 0 01-.25-.25v-8.5a.25.25 0 01.25-.25h3.5a.75.75 0 000-1.5h-3.5z"/>
+              <path d="M10 1a.75.75 0 000 1.5h2.44L8.22 6.72a.75.75 0 001.06 1.06L13.5 3.56V6a.75.75 0 001.5 0V1.75a.75.75 0 00-.75-.75H10z"/>
+            </svg>
+          </button>
+          <button
+            class="icon-btn"
+            title={pathCopied ? 'Copied!' : `Copy local path: ${$activeRepo?.localPath ?? ''}`}
+            on:click={() => void copyRepoPath()}
+          >
+            <!-- Clipboard icon -->
+            {#if pathCopied}
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
+              </svg>
+            {:else}
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/>
+                <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/>
+              </svg>
+            {/if}
+          </button>
+          <button
+            class="icon-btn"
+            title="Close repository"
+            on:click={resetRepoSession}
+          >
+            <!-- X / close icon -->
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/>
+            </svg>
+          </button>
+        </div>
         <BranchSelector />
         <div class="signout-menu">
           <button class="signout-trigger" on:click={() => (showSignOutPanel = !showSignOutPanel)}>
@@ -354,44 +397,53 @@
 
   .toolbar-actions {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 0.75rem;
     position: relative;
+  }
+
+  .repo-group {
+    display: inline;
+    align-items: center;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 0.2rem 0.5rem;
   }
 
   .signout-menu {
     position: relative;
   }
 
-  .open-repo-btn {
-    border: 1px solid #30363d;
-    background: transparent;
-    color: inherit;
-    border-radius: 6px;
-    padding: 0.35rem 0.6rem;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .open-repo-btn:hover,
-  .open-repo-btn:focus-visible {
-    border-color: #8b949e;
-  }
-
-  .copy-path-btn {
-    border: 1px solid #30363d;
-    background: transparent;
-    color: inherit;
-    border-radius: 6px;
-    padding: 0.35rem 0.6rem;
-    cursor: pointer;
-    white-space: nowrap;
+  .repo-name {
     font-size: 0.85rem;
+    font-weight: 500;
+    opacity: 0.9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 20rem;
+    margin: 0;
+    padding: 0;
   }
 
-  .copy-path-btn:hover,
-  .copy-path-btn:focus-visible {
-    border-color: #8b949e;
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: inherit;
+    border-radius: 4px;
+    padding: 0.3rem;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.15s, background 0.15s;
+  }
+
+  .icon-btn:hover,
+  .icon-btn:focus-visible {
+    opacity: 1;
+    background: #30363d;
   }
 
   .signout-trigger {
