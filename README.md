@@ -248,6 +248,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
   - `Implemented (Phase 1)` (or the current implementation section) with completed deliverables.
   - `Next Work` by removing completed items and adding/refining upcoming work.
 - If commands, prerequisites, or test workflows change, update `Quick Start` and `Tests` in the same PR.
+- **All tests must pass.** Never skip, ignore, or disable existing tests. Never dismiss a test failure as "pre-existing" or "flaky" — fix the root cause (code or test) before merging. If a test is intermittently failing, make the test deterministic rather than removing or skipping it.
 
 ## CI / Releases
 
@@ -265,9 +266,10 @@ Use this checklist in every PR description:
 
 - [ ] Feature/status docs updated in README (`Implemented` + `Next Work` as needed).
 - [ ] Any command, setup, or test workflow changes reflected in README (`Quick Start` / `Tests`).
-- [ ] Frontend validation run (`npm run check`, `npm run lint`, `npm test`).
-- [ ] Backend validation run (`cd src-tauri && cargo test`).
+- [ ] Frontend validation run (`npm run check`, `npm run lint`, `npm test`) — **all checks must pass with zero errors and zero test failures.**
+- [ ] Backend validation run (`cd src-tauri && cargo test`) — **all tests must pass with zero failures.** Do not use `--test-threads=1` or any other workaround to mask concurrency bugs; fix the root cause instead.
 - [ ] `npm audit --omit=dev` reviewed for production-impacting vulnerabilities.
+- [ ] No tests were skipped, disabled, or marked `#[ignore]` to make the suite pass.
 
 ## Tests
 

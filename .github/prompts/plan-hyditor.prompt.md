@@ -522,6 +522,12 @@ The `client_id` from the registered app is embedded in the binary. This is safe 
 - Build: `tauri build` for Linux, macOS, Windows
 - Release: Draft GitHub Release with platform binaries on tag push
 
+### Test Policy (mandatory)
+- **All tests must pass.** The full validation suite (`npm run check && npm run lint && npm test` + `cd src-tauri && cargo test`) must complete with zero errors and zero failures before any change is considered done.
+- **Never skip, ignore, or disable tests** to make the suite pass. Do not add `#[ignore]`, `skip()`, or conditional gates that bypass tests related to existing code.
+- **Never dismiss failures as pre-existing or flaky.** If a test fails intermittently, fix the root cause (add synchronization, isolate shared state, remove race conditions) rather than ignoring the failure or requiring `--test-threads=1`.
+- **Tests that touch process-global state** (e.g. `TOKEN_CACHE`) must use a serialization mutex or equivalent mechanism to be safe under any `--test-threads` value.
+
 ---
 
 ## Decisions Log
