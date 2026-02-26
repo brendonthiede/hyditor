@@ -216,7 +216,7 @@
           class="blade-tab"
           class:active={$layout.leftPanelBlade === 'git'}
           on:click={() => layout.setLeftPanelBlade('git')}
-        >Git</button>
+        >Publish</button>
       </div>
       {#if $layout.leftPanelBlade === 'files' && $fileTree.length > 0}
         <button class="icon-btn" title="Collapse all folders" on:click={collapseAll}>

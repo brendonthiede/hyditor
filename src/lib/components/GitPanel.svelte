@@ -68,7 +68,7 @@
 
 <section class="git">
   <header>
-    <h3>Git</h3>
+    <h3>Publish</h3>
     <button on:click={refreshGitStatus} disabled={$gitState.busy}>Refresh</button>
   </header>
 
