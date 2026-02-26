@@ -84,8 +84,9 @@ function expandPermalinkTemplate(
   for (const segment of segments) {
     if (segment === ':categories') {
       // Drop segment entirely when there are no categories.
+      // Jekyll lowercases categories when building URLs.
       if (vars.categories.length > 0) {
-        expanded.push(...vars.categories);
+        expanded.push(...vars.categories.map((c) => c.toLowerCase()));
       }
     } else {
       const s = segment

@@ -305,6 +305,20 @@ describe('jekyllUrlForFile — date override from front matter', () => {
       jekyllUrlForFile(BASE, REPO, `${REPO}/_posts/2024-01-10-post.md`, content, 'date')
     ).toBe(`${BASE}/tech/tutorials/2024/01/10/post.html`);
   });
+
+  it('lowercases uppercase categories in the URL (matching Jekyll behavior)', () => {
+    const content = '---\ncategories: [FLL]\n---\n';
+    expect(
+      jekyllUrlForFile(BASE, REPO, `${REPO}/_posts/2024-01-10-post.md`, content, 'date')
+    ).toBe(`${BASE}/fll/2024/01/10/post.html`);
+  });
+
+  it('lowercases mixed-case categories in the URL', () => {
+    const content = '---\ncategories: [DevOps, Tech]\n---\n';
+    expect(
+      jekyllUrlForFile(BASE, REPO, `${REPO}/_posts/2024-01-10-post.md`, content, 'date')
+    ).toBe(`${BASE}/devops/tech/2024/01/10/post.html`);
+  });
 });
 
 describe('jekyllUrlForFile — custom template with i_month and i_day', () => {
