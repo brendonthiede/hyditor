@@ -30,6 +30,29 @@
     return jekyllUrlForFile(jekyllBaseUrl, repoPath, absFile, $editorState.currentContent, sitePermalink);
   })();
 
+  // Debounced iframe URL — prevents rapid reloads during frontmatter edits
+  let debouncedIframeUrl: string | null = null;
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  const IFRAME_RELOAD_DELAY_MS = 1000;
+
+  function applyIframeUrl(url: string | null): void {
+    if (debounceTimer !== null) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+    if (url === null || debouncedIframeUrl === null) {
+      // Mode switch or first URL — apply immediately
+      debouncedIframeUrl = url;
+    } else if (url !== debouncedIframeUrl) {
+      debounceTimer = setTimeout(() => {
+        debouncedIframeUrl = url;
+        debounceTimer = null;
+      }, IFRAME_RELOAD_DELAY_MS);
+    }
+  }
+
+  $: applyIframeUrl(iframeUrl);
+
   // Push instant-mode content to the pop-out window whenever it changes.
   $: if ($layout.previewPoppedOut && $previewState.mode === 'instant') {
     void emitToPreviewPopup('preview-popup-update', {
@@ -77,6 +100,7 @@
 
   onDestroy(() => {
     void stopJekyllPreview();
+    if (debounceTimer !== null) clearTimeout(debounceTimer);
     unlistenPopupReady?.();
     unlistenPopupDestroyed?.();
   });
@@ -94,9 +118,9 @@
       class="viewport"
       style={`width: ${$previewState.viewport.width}px; height: ${$previewState.viewport.height}px;`}
     >
-      {#if $previewState.mode === 'jekyll' && iframeUrl}
-        {#key iframeUrl}
-          <iframe title="Jekyll preview" src={iframeUrl}></iframe>
+      {#if $previewState.mode === 'jekyll' && debouncedIframeUrl}
+        {#key debouncedIframeUrl}
+          <iframe title="Jekyll preview" src={debouncedIframeUrl}></iframe>
         {/key}
       {:else}
         <article>
