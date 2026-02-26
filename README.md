@@ -74,9 +74,9 @@ npm install
 npm run tauri:dev
 ```
 
-If `Sign in with GitHub` reports client ID not configured, copy `.env.example` to `.env` and set `HYDITOR_GITHUB_CLIENT_ID` to your GitHub App public client ID. `npm run tauri:dev` loads `.env` automatically.
+If `Sign in with GitHub` reports client ID not configured, the `DEFAULT_CLIENT_ID` placeholder in `src-tauri/src/auth/device_flow.rs` has not been replaced yet — see **Auth Implementation Notes** below for how to create an app and fill it in.
 
-Note: The Device Flow `client_id` is public (not a secret). `HYDITOR_GITHUB_CLIENT_ID` overrides the embedded value for development.
+To use a different client ID for local development without changing the committed default, copy `.env.example` to `.env` and set `HYDITOR_GITHUB_CLIENT_ID`; `npm run tauri:dev` loads `.env` automatically.
 
 ## Developing over SSH (Windows)
 
@@ -188,7 +188,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 
 ## Implemented (Phase 1)
 
-- ✅ GitHub App Device Flow authentication with token refresh
+- ✅ GitHub Device Flow authentication (OAuth App or GitHub App) with token refresh
 - ✅ Stronghold-backed encrypted token storage with OS keychain-backed key derivation
 - ✅ Authenticated GitHub repository listing + clone-to-cache flow (git2)
 - ✅ CodeMirror 6 editor with language switching (Markdown, YAML, HTML/Liquid)
@@ -294,9 +294,14 @@ cd src-tauri && cargo test -- --test-threads=1
 
 ## Auth Implementation Notes
 
-- The GitHub Device Flow `client_id` is public and safe to embed.
-- `HYDITOR_GITHUB_CLIENT_ID` overrides the embedded value for development.
-  - Copy `.env.example` to `.env` and fill in the value; `.env` is loaded automatically by `npm run tauri:dev` via `dotenv-cli`.
+- The Device Flow `client_id` is public and safe to embed (it appears in plaintext in every OAuth HTTP request).
+- The real client ID is committed directly in `DEFAULT_CLIENT_ID` in `src-tauri/src/auth/device_flow.rs`. No build secrets or env vars are needed for release builds.
+- The runtime env var `HYDITOR_GITHUB_CLIENT_ID` or `.env` file overrides the compiled-in value, useful for local dev with a separate dev app.
+- **Both OAuth Apps and GitHub Apps work** with Device Flow. Choose one:
+  - **OAuth App** (simpler): Settings → Developer settings → OAuth Apps → New OAuth App. Set Homepage URL, check **Enable Device Flow**. Client ID is a 20-char hex string.
+  - **GitHub App** (more granular permissions): Settings → Developer settings → GitHub Apps → New GitHub App. Set name + homepage, check **Enable Device Flow** under "Identifying and authorizing users", disable Webhook. Set Repository permissions → Contents: Read & write + Metadata: Read-only; Account permissions → Email addresses: Read-only. Client ID starts with `Iv1.`.
+- After creating either app type, copy the **Client ID** from the app settings page into `DEFAULT_CLIENT_ID` in `device_flow.rs` and commit.
+- You may reuse the same app for development and releases. To use a separate dev app, set `HYDITOR_GITHUB_CLIENT_ID` in `.env` to override the committed default.
 - Tokens stored in Stronghold encrypted vault (XChaCha20-Poly1305 encryption) at `~/.local/share/com.brendonthiede.hyditor/auth.stronghold`.
 - Stronghold unlock material is persisted in the OS keychain (`io.github.brendonthiede.hyditor` / `stronghold-master-key`) and hashed with app context to derive the runtime vault key.
 - A `auth.key` backup file (0600 permissions, same directory as the snapshot) holds the raw key material as a fallback for when the OS keychain is unavailable.  Key lookup order: in-memory cache → OS keychain → backup file → (legacy `stronghold.key` migration) → generate fresh key.

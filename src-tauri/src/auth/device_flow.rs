@@ -56,25 +56,26 @@ struct DeviceFlowTokenResponse {
     error: Option<String>,
 }
 
-const DEFAULT_CLIENT_ID: &str = "Iv1.REPLACE_WITH_YOUR_GITHUB_APP_CLIENT_ID";
+// The client_id is public and safe to commit — it appears in plaintext in every
+// Device Flow HTTP request. Works with both GitHub Apps (Iv1.xxx) and OAuth Apps
+// (20-char hex). Replace the placeholder with your app's client ID.
+// For dev/test overrides, set the HYDITOR_GITHUB_CLIENT_ID env var (or .env file).
+const DEFAULT_CLIENT_ID: &str = "Ov23liua1nTIwFhuvkBB";
 
 fn looks_like_placeholder_client_id(client_id: &str) -> bool {
-    client_id.contains("REPLACE_WITH_YOUR_GITHUB_APP_CLIENT_ID")
+    client_id.contains("REPLACE_WITH_YOUR_GITHUB_CLIENT_ID")
 }
 
 fn github_client_id() -> Result<String, String> {
-    // Check env first for override (useful in dev/testing)
+    // Runtime env var takes priority (dev/test override via .env file)
     if let Ok(client_id) = std::env::var("HYDITOR_GITHUB_CLIENT_ID") {
         if !client_id.is_empty() && !looks_like_placeholder_client_id(&client_id) {
             return Ok(client_id);
         }
     }
-    
-    // Use hardcoded default client ID (public, safe to embed)
-    if DEFAULT_CLIENT_ID.starts_with("Iv1.")
-        && DEFAULT_CLIENT_ID.len() > 10
-        && !looks_like_placeholder_client_id(DEFAULT_CLIENT_ID)
-    {
+
+    // Use the default client ID baked into the binary
+    if !DEFAULT_CLIENT_ID.is_empty() && !looks_like_placeholder_client_id(DEFAULT_CLIENT_ID) {
         Ok(DEFAULT_CLIENT_ID.to_string())
     } else {
         Err("GitHub client ID not configured. Set HYDITOR_GITHUB_CLIENT_ID before signing in.".to_string())
@@ -440,18 +441,18 @@ mod tests {
 
         // Save original value if it exists
         let original = std::env::var("HYDITOR_GITHUB_CLIENT_ID").ok();
-        
-        // Set test value
-        std::env::set_var("HYDITOR_GITHUB_CLIENT_ID", "Iv1.test_override_id");
+
+        // Works with GitHub App client IDs (Iv1.xxx)
+        std::env::set_var("HYDITOR_GITHUB_CLIENT_ID", "Iv1.test_github_app_id");
         let result = github_client_id();
-        
-        // Verify env var was used
-        assert!(result.is_ok(), "github_client_id() should succeed");
-        assert_eq!(
-            result.unwrap(),
-            "Iv1.test_override_id",
-            "should use env var value"
-        );
+        assert!(result.is_ok(), "github_client_id() should succeed with GitHub App ID");
+        assert_eq!(result.unwrap(), "Iv1.test_github_app_id", "should use env var value");
+
+        // Also works with OAuth App client IDs (20-char hex)
+        std::env::set_var("HYDITOR_GITHUB_CLIENT_ID", "abc123def4567890abcd");
+        let result = github_client_id();
+        assert!(result.is_ok(), "github_client_id() should succeed with OAuth App ID");
+        assert_eq!(result.unwrap(), "abc123def4567890abcd", "should use env var value");
         
         // Restore original value
         if let Some(orig) = original {
@@ -467,14 +468,13 @@ mod tests {
 
         std::env::remove_var("HYDITOR_GITHUB_CLIENT_ID");
         let result = github_client_id();
-        
-        // The result depends on whether DEFAULT_CLIENT_ID is configured
-        // If it's the placeholder, it should error; otherwise it should work
+
+        // The result depends on whether DEFAULT_CLIENT_ID has been set to a real value
         match result {
             Ok(id) => {
-                // If it succeeds, must be valid format
-                assert!(id.starts_with("Iv1."));
-                assert!(id.len() > 10);
+                // If it succeeds, must not be empty or the placeholder
+                assert!(!id.is_empty());
+                assert!(!looks_like_placeholder_client_id(&id));
             }
             Err(e) => {
                 // If it fails, should be the "not configured" error
@@ -488,14 +488,16 @@ mod tests {
         let _guard = env_lock().lock().expect("env lock should not be poisoned");
 
         std::env::remove_var("HYDITOR_GITHUB_CLIENT_ID");
-        
-        // The hardcoded default should either be a valid placeholder or a real client ID
+
+        // DEFAULT_CLIENT_ID either holds a real client ID or the placeholder
         let result = github_client_id();
-        
+
         if result.is_ok() {
+            // Valid: GitHub App ID (Iv1.xxx) or OAuth App ID (20-char hex) — just not the placeholder
             let id = result.unwrap();
-            assert!(id.starts_with("Iv1."));
-            assert!(id.len() > 10);
+            assert!(!id.is_empty());
+            assert!(!looks_like_placeholder_client_id(&id));
         }
+        // If it errors, the placeholder has not been replaced — expected in CI without a real ID
     }
 }
