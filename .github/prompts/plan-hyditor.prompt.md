@@ -68,7 +68,7 @@ Security is the top priority. Every design decision is evaluated through this le
    - On success, receives `access_token` + `refresh_token`
   - **No client secret is embedded in the binary** (device flow does not require it)
   - The public `client_id` is safe to embed and can be overridden via `HYDITOR_GITHUB_CLIENT_ID` for development
-   - Token has fine-grained permissions: `contents:write`, `pull_requests:write`, `metadata:read`
+   - Token has fine-grained permissions: `contents:write`, `metadata:read`
    - User selects which repositories to grant access to during App installation
 
 2. **Token lifecycle**
@@ -128,7 +128,7 @@ Security is the top priority. Every design decision is evaluated through this le
 **Step 2: GitHub App registration & Device Flow auth**
 - Register a GitHub App at `github.com/settings/apps`:
   - Name: "Hyditor"
-  - Permissions: Repository contents (read/write), Pull requests (read/write), Metadata (read)
+  - Permissions: Repository contents (read/write), Metadata (read)
   - Enable Device Flow
   - No webhook URL needed
   - Document the `client_id` (public, safe to embed)
@@ -224,11 +224,14 @@ Security is the top priority. Every design decision is evaluated through this le
 - Restore last-used branch on session reload via `switchBranch()`
 - Graceful fallback to default branch if the persisted branch no longer exists
 - Remove PR & branch creation UI:
-  - Delete `PRDialog.svelte` component and all references from `+page.svelte`
-  - Simplify `BranchSelector.svelte`: keep only the branch `<select>` dropdown
-  - Remove Rust backend: `pull_request.rs`, `create_branch` function, `git_unstage` command
-  - Remove frontend: `pullRequestState`, `branchUiState` stores, `createRepoBranch`, PR-related store functions
-  - Remove Tauri wrappers: `unstage()`, `createBranch()`, `listPullRequests()`, `createPullRequest()`
+  - ~~Delete `PRDialog.svelte` component and all references from `+page.svelte`~~ ✅
+  - ~~Remove Rust backend: `pull_request.rs`~~ ✅ — removed `create_pr`, `list_prs` Tauri commands
+  - ~~Remove frontend: `pullRequestState` store, PR-related store functions~~ ✅
+  - ~~Remove Tauri wrappers: `listPullRequests()`, `createPullRequest()`~~ ✅
+  - Simplify `BranchSelector.svelte`: keep only the branch `<select>` dropdown (remove "Create Branch" input/button and "Refresh" button)
+  - Remove Rust backend: `create_branch` function, `git_unstage` command
+  - Remove frontend: `branchUiState` store, `createRepoBranch` store function
+  - Remove Tauri wrappers: `unstage()`, `createBranch()`
   - Clean up toolbar: remove git badge staged/unstaged distinction; show total changed file count instead
 
 **Step 9: Full Jekyll preview**
@@ -327,11 +330,10 @@ hyditor/
 │   │   │   └── token_store.rs    # Stronghold-based token storage
 │   │   ├── git/
 │   │   │   ├── mod.rs
+│   │   │   ├── branch.rs         # Branch list & switch
 │   │   │   ├── clone.rs          # Repo cloning via git2
 │   │   │   ├── commit.rs         # Staging & committing
-│   │   │   ├── branch.rs         # Branch list & switch
 │   │   │   ├── push.rs           # Push with HTTPS token auth
-│   │   │   ├── revert.rs         # Discard file changes (revert tracked / delete untracked)
 │   │   │   └── status.rs         # Working directory status & diffs
 │   │   ├── github/
 │   │   │   ├── mod.rs
@@ -341,40 +343,59 @@ hyditor/
 │   │   │   └── jekyll.rs         # Jekyll subprocess management
 │   │   └── fs/
 │   │       ├── mod.rs
-│   │       └── scoped.rs         # Scoped filesystem access
+│   │       ├── scoped.rs         # Scoped filesystem access
+│   │       └── session.rs        # Last-session persistence (repo path, branch)
 │   └── icons/                    # App icons
 ├── src/                          # SvelteKit frontend
 │   ├── app.html
 │   ├── app.css                   # Global styles, theme variables
 │   ├── lib/
 │   │   ├── components/
-│   │   │   ├── Editor.svelte         # CodeMirror 6 wrapper
-│   │   │   ├── Preview.svelte        # Markdown preview + iframe
-│   │   │   ├── FileTree.svelte       # Sidebar file browser
-│   │   │   ├── GitPanel.svelte       # Changed files list, revert, publish
-│   │   │   ├── BranchSelector.svelte # Branch switcher (dropdown only)
-│   │   │   ├── FrontMatterForm.svelte# Structured front matter editor
-│   │   │   ├── ViewportToolbar.svelte# Desktop/tablet/mobile presets
 │   │   │   ├── AuthScreen.svelte     # Device flow sign-in
-│   │   │   └── RepoSelector.svelte   # Repo picker
+│   │   │   ├── BranchSelector.svelte # Branch switcher (dropdown only)
+│   │   │   ├── Editor.svelte         # CodeMirror 6 wrapper
+│   │   │   ├── FileTree.svelte       # Sidebar file browser
+│   │   │   ├── FrontMatterForm.svelte# Structured front matter editor
+│   │   │   ├── GitPanel.svelte       # Changed files list, revert, publish
+│   │   │   ├── PanelResizeHandle.svelte # Drag-to-resize divider between panels
+│   │   │   ├── Preview.svelte        # Markdown preview + iframe
+│   │   │   ├── RepoSelector.svelte   # Repo picker
+│   │   │   ├── SearchPanel.svelte    # Full-text search across repo files
+│   │   │   └── ViewportToolbar.svelte# Desktop/tablet/mobile presets
 │   │   ├── stores/
 │   │   │   ├── auth.ts           # Auth state
-│   │   │   ├── repo.ts           # Active repo state
 │   │   │   ├── editor.ts         # Editor state (open files, dirty flags)
-│   │   │   └── preview.ts        # Preview mode & viewport state
+│   │   │   ├── editor.test.ts    # Editor store tests
+│   │   │   ├── layout.ts         # Panel sizes, collapsed state, persistence
+│   │   │   ├── layout.test.ts    # Layout store tests
+│   │   │   ├── preview.ts        # Preview mode & viewport state
+│   │   │   └── repo.ts           # Active repo state
 │   │   ├── tauri/
 │   │   │   ├── auth.ts           # IPC wrappers for auth commands
+│   │   │   ├── fs.ts             # IPC wrappers for file operations
 │   │   │   ├── git.ts            # IPC wrappers for git commands
 │   │   │   ├── github.ts         # IPC wrappers for GitHub API commands
-│   │   │   ├── fs.ts             # IPC wrappers for file operations
-│   │   │   └── preview.ts        # IPC wrappers for Jekyll preview
+│   │   │   ├── preview.ts        # IPC wrappers for Jekyll preview
+│   │   │   ├── runtime.ts        # Tauri runtime detection helper
+│   │   │   ├── session.ts        # Session save/restore IPC wrappers
+│   │   │   └── window.ts         # Window management IPC wrappers
 │   │   └── utils/
-│   │       ├── markdown.ts       # remark/rehype rendering pipeline
+│   │       ├── authErrors.ts     # Auth-expired error detection
+│   │       ├── authErrors.test.ts
+│   │       ├── errors.ts         # General error utilities
+│   │       ├── errors.test.ts
 │   │       ├── frontmatter.ts    # gray-matter parsing helpers
-│   │       └── jekyll.ts         # Jekyll filename conventions, slug generation
+│   │       ├── frontmatter.test.ts
+│   │       ├── jekyll.ts         # Jekyll filename conventions, slug generation
+│   │       ├── jekyll.test.ts
+│   │       ├── markdown.ts       # remark/rehype rendering pipeline
+│   │       └── markdown.test.ts
 │   └── routes/
 │       ├── +layout.svelte        # App shell layout
-│       └── +page.svelte          # Main editor page
+│       ├── +layout.ts            # SvelteKit layout load (SSR disabled)
+│       ├── +page.svelte          # Main editor page
+│       └── preview-window/
+│           └── +page.svelte      # Pop-out preview window route
 ├── static/                       # Static assets
 ├── package.json
 ├── svelte.config.js
@@ -470,7 +491,7 @@ frame-src 'self' http://127.0.0.1:*;
 | **Callback URL** | Not needed (device flow) |
 | **Setup URL** | Optional: link to README |
 | **Webhook** | Disabled (not needed) |
-| **Permissions** | Repository: Contents (R/W), Metadata (R) |
+| **Permissions** | Repository: Contents (R/W), Metadata (R) — Pull requests permission removed (PR workflows handled via GitHub directly) |
 | **Where can this app be installed?** | Any account |
 | **Enable Device Flow** | Yes |
 
@@ -553,7 +574,7 @@ The `client_id` from the registered app is embedded in the binary. This is safe 
 |------|--------|------------|
 | User doesn't have Ruby/Jekyll installed | Cannot use full preview | Detect on first use, show install instructions with links; client-side preview still works; consider future Docker option |
 | WebView rendering differences across OS | Preview may look different on Linux vs macOS vs Windows | Use CSS normalization; test on all three; document known differences |
-| GitHub App rate limits | API calls fail | Cache repo lists and PR statuses; 5,000 req/hr is ample for single-user editor |
+| GitHub App rate limits | API calls fail | Cache repo lists; 5,000 req/hr is ample for single-user editor |
 | Large repositories | Slow clone, high disk usage | Implement shallow clone; lazy-load file tree; show clone progress |
 | Merge conflicts on push | User loses work or is confused | Always fetch before push; show clear conflict dialog; support rebase and merge strategies |
 | Stronghold vault corruption | Tokens lost, user must re-authenticate | Graceful fallback: detect corruption, clear vault, prompt re-auth; tokens are easily re-obtained |
