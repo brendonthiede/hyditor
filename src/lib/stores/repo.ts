@@ -21,6 +21,7 @@ import { readFile, readTree, writeFile } from '$lib/tauri/fs';
 import { requireReauthentication } from '$lib/stores/auth';
 import { fileTree, resetEditorState, setCurrentFileContent } from '$lib/stores/editor';
 import { extractAuthExpiredMessage } from '$lib/utils/authErrors';
+import { getErrorMessage, isMarkdownPath, joinRepoPath } from '$lib/utils/errors';
 import { setPreviewMode } from '$lib/stores/preview';
 
 export type RepoInfo = {
@@ -78,24 +79,7 @@ export const pullRequestState = writable<{
   lastAction: string | null;
 }>({ entries: [], busy: false, error: null, lastAction: null });
 
-function getErrorMessage(error: unknown): string | null {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-
-  if (typeof error === 'string' && error.trim().length > 0) {
-    return error;
-  }
-
-  if (error && typeof error === 'object' && 'message' in error) {
-    const maybeMessage = (error as { message?: unknown }).message;
-    if (typeof maybeMessage === 'string' && maybeMessage.trim().length > 0) {
-      return maybeMessage;
-    }
-  }
-
-  return null;
-}
+// getErrorMessage imported from '$lib/utils/errors'
 
 function handleAuthExpiredError(error: unknown): boolean {
   const authExpiredMessage = extractAuthExpiredMessage(getErrorMessage(error));
@@ -123,16 +107,7 @@ function handleNotAuthenticatedError(error: unknown): boolean {
   return true;
 }
 
-function isMarkdownPath(path: string): boolean {
-  const lower = path.toLowerCase();
-  return lower.endsWith('.md') || lower.endsWith('.markdown');
-}
-
-function joinRepoPath(localPath: string, relativePath: string): string {
-  const trimmedBase = localPath.replace(/[\\/]+$/, '');
-  const trimmedRelative = relativePath.replace(/^[/\\]+/, '');
-  return `${trimmedBase}/${trimmedRelative}`;
-}
+// isMarkdownPath and joinRepoPath imported from '$lib/utils/errors'
 
 async function openFirstMarkdownFile(localPath: string): Promise<void> {
   const tree = get(fileTree);

@@ -196,3 +196,103 @@ pub async fn clone_repo(
 
     Ok(target.to_string_lossy().to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- resolve_clone_base ---
+
+    #[test]
+    fn resolve_clone_base_none_uses_default() {
+        let result = resolve_clone_base(None);
+        assert!(result.is_ok());
+        let path = result.unwrap();
+        assert!(path.to_string_lossy().contains("hyditor"));
+    }
+
+    #[test]
+    fn resolve_clone_base_empty_string_uses_default() {
+        let result = resolve_clone_base(Some("".to_string()));
+        assert!(result.is_ok());
+        let path = result.unwrap();
+        assert!(path.to_string_lossy().contains("hyditor"));
+    }
+
+    #[test]
+    fn resolve_clone_base_whitespace_only_uses_default() {
+        let result = resolve_clone_base(Some("   ".to_string()));
+        assert!(result.is_ok());
+        let path = result.unwrap();
+        assert!(path.to_string_lossy().contains("hyditor"));
+    }
+
+    #[test]
+    fn resolve_clone_base_custom_path() {
+        let result = resolve_clone_base(Some("/tmp/my-repos".to_string()));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), PathBuf::from("/tmp/my-repos"));
+    }
+
+    // --- is_git_auth_failure ---
+
+    #[test]
+    fn is_git_auth_failure_auth_error_code() {
+        let err = git2::Error::new(
+            ErrorCode::Auth,
+            git2::ErrorClass::Net,
+            "authentication required",
+        );
+        assert!(is_git_auth_failure(&err));
+    }
+
+    #[test]
+    fn is_git_auth_failure_message_authentication() {
+        let err = git2::Error::new(
+            ErrorCode::GenericError,
+            git2::ErrorClass::Net,
+            "remote authentication failed",
+        );
+        assert!(is_git_auth_failure(&err));
+    }
+
+    #[test]
+    fn is_git_auth_failure_message_credentials() {
+        let err = git2::Error::new(
+            ErrorCode::GenericError,
+            git2::ErrorClass::Net,
+            "invalid credentials provided",
+        );
+        assert!(is_git_auth_failure(&err));
+    }
+
+    #[test]
+    fn is_git_auth_failure_message_unauthorized() {
+        let err = git2::Error::new(
+            ErrorCode::GenericError,
+            git2::ErrorClass::Http,
+            "unauthorized access",
+        );
+        assert!(is_git_auth_failure(&err));
+    }
+
+    #[test]
+    fn is_git_auth_failure_message_http_401() {
+        let err = git2::Error::new(
+            ErrorCode::GenericError,
+            git2::ErrorClass::Http,
+            "HTTP 401 returned",
+        );
+        assert!(is_git_auth_failure(&err));
+    }
+
+    #[test]
+    fn is_git_auth_failure_unrelated_error_returns_false() {
+        let err = git2::Error::new(
+            ErrorCode::GenericError,
+            git2::ErrorClass::Net,
+            "network timeout while connecting",
+        );
+        assert!(!is_git_auth_failure(&err));
+    }
+}

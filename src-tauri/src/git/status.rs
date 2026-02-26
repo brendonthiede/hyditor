@@ -114,3 +114,78 @@ pub fn git_diff_file(repo_path: String, file_path: String) -> Result<String, Str
 
     Ok(output)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn derive_status_label_untracked() {
+        assert_eq!(derive_status_label(git2::Status::WT_NEW), "untracked");
+    }
+
+    #[test]
+    fn derive_status_label_added() {
+        assert_eq!(derive_status_label(git2::Status::INDEX_NEW), "added");
+    }
+
+    #[test]
+    fn derive_status_label_deleted_from_index() {
+        assert_eq!(derive_status_label(git2::Status::INDEX_DELETED), "deleted");
+    }
+
+    #[test]
+    fn derive_status_label_deleted_from_worktree() {
+        assert_eq!(derive_status_label(git2::Status::WT_DELETED), "deleted");
+    }
+
+    #[test]
+    fn derive_status_label_renamed_index() {
+        assert_eq!(derive_status_label(git2::Status::INDEX_RENAMED), "renamed");
+    }
+
+    #[test]
+    fn derive_status_label_renamed_worktree() {
+        assert_eq!(derive_status_label(git2::Status::WT_RENAMED), "renamed");
+    }
+
+    #[test]
+    fn derive_status_label_modified_index() {
+        assert_eq!(
+            derive_status_label(git2::Status::INDEX_MODIFIED),
+            "modified"
+        );
+    }
+
+    #[test]
+    fn derive_status_label_modified_worktree() {
+        assert_eq!(derive_status_label(git2::Status::WT_MODIFIED), "modified");
+    }
+
+    #[test]
+    fn derive_status_label_conflicted() {
+        assert_eq!(derive_status_label(git2::Status::CONFLICTED), "conflicted");
+    }
+
+    #[test]
+    fn derive_status_label_fallback_changed() {
+        // INDEX_TYPECHANGE doesn't match any earlier branch → fallback to "changed"
+        assert_eq!(
+            derive_status_label(git2::Status::INDEX_TYPECHANGE),
+            "changed"
+        );
+    }
+
+    #[test]
+    fn derive_status_label_untracked_takes_priority_over_modified() {
+        // WT_NEW should win when combined with other flags
+        let flags = git2::Status::WT_NEW | git2::Status::WT_MODIFIED;
+        assert_eq!(derive_status_label(flags), "untracked");
+    }
+
+    #[test]
+    fn derive_status_label_added_takes_priority_over_modified() {
+        let flags = git2::Status::INDEX_NEW | git2::Status::INDEX_MODIFIED;
+        assert_eq!(derive_status_label(flags), "added");
+    }
+}

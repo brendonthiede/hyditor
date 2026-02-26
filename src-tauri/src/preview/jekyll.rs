@@ -250,4 +250,20 @@ mod tests {
     fn stop_without_active_process_is_ok() {
         stop_jekyll().expect("stop should succeed without an active process");
     }
+
+    #[test]
+    fn start_jekyll_rejects_nonexistent_path() {
+        let result = start_jekyll("/definitely/not/a/real/repo/path".to_string());
+        assert!(result.is_err());
+        assert!(
+            result.unwrap_err().contains("does not exist"),
+            "should indicate the path does not exist"
+        );
+    }
+
+    #[test]
+    fn preview_host_and_port_constants() {
+        assert_eq!(PREVIEW_HOST, "127.0.0.1");
+        assert_eq!(PREVIEW_PORT, 4000);
+    }
 }

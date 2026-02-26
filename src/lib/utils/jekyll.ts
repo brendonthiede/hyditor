@@ -46,6 +46,18 @@ function expandPermalinkTemplate(
   const segments = template.split('/').filter((s) => s.length > 0);
   const expanded: string[] = [];
 
+  // Compute day-of-year (1-based) for the :y_day placeholder
+  const yearNum = parseInt(vars.year, 10);
+  const monthNum = parseInt(vars.month, 10);
+  const dayNum = parseInt(vars.day, 10);
+  const dayOfYear =
+    !isNaN(yearNum) && !isNaN(monthNum) && !isNaN(dayNum)
+      ? Math.floor(
+          (Date.UTC(yearNum, monthNum - 1, dayNum) - Date.UTC(yearNum, 0, 0)) /
+            (1000 * 60 * 60 * 24)
+        )
+      : 0;
+
   for (const segment of segments) {
     if (segment === ':categories') {
       // Drop segment entirely when there are no categories.
@@ -59,6 +71,7 @@ function expandPermalinkTemplate(
         .replace(':i_month', String(parseInt(vars.month, 10)))
         .replace(':day', vars.day)
         .replace(':i_day', String(parseInt(vars.day, 10)))
+        .replace(':y_day', String(dayOfYear))
         .replace(':slug', vars.slug)
         .replace(':title', vars.title)
         .replace(':output_ext', vars.outputExt);

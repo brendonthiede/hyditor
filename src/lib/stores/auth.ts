@@ -7,6 +7,7 @@ import {
   startDeviceFlow
 } from '$lib/tauri/auth';
 import { extractAuthExpiredMessage } from '$lib/utils/authErrors';
+import { toErrorMessage } from '$lib/utils/errors';
 
 type AuthState = {
   status: 'loading' | 'signed_out' | 'pending' | 'authenticated' | 'error';
@@ -20,24 +21,7 @@ export const authState = writable<AuthState>({ status: 'loading' });
 
 let activePoll: AbortController | null = null;
 
-function toErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-
-  if (typeof error === 'string' && error.trim().length > 0) {
-    return error;
-  }
-
-  if (error && typeof error === 'object' && 'message' in error) {
-    const maybeMessage = (error as { message?: unknown }).message;
-    if (typeof maybeMessage === 'string' && maybeMessage.trim().length > 0) {
-      return maybeMessage;
-    }
-  }
-
-  return fallback;
-}
+// toErrorMessage imported from '$lib/utils/errors'
 
 export function requireReauthentication(message?: string): void {
   activePoll?.abort();

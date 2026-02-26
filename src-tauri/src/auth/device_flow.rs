@@ -500,4 +500,41 @@ mod tests {
         }
         // If it errors, the placeholder has not been replaced — expected in CI without a real ID
     }
+
+    // --- looks_like_placeholder_client_id ---
+
+    #[test]
+    fn looks_like_placeholder_detects_placeholder_string() {
+        assert!(looks_like_placeholder_client_id(
+            "REPLACE_WITH_YOUR_GITHUB_CLIENT_ID"
+        ));
+        assert!(looks_like_placeholder_client_id(
+            "Iv1.REPLACE_WITH_YOUR_GITHUB_CLIENT_ID_HERE"
+        ));
+    }
+
+    #[test]
+    fn looks_like_placeholder_rejects_real_ids() {
+        assert!(!looks_like_placeholder_client_id("Ov23liua1nTIwFhuvkBB"));
+        assert!(!looks_like_placeholder_client_id("Iv1.abc123def456"));
+        assert!(!looks_like_placeholder_client_id("abc123def4567890abcd"));
+    }
+
+    #[test]
+    fn looks_like_placeholder_rejects_empty_string() {
+        assert!(!looks_like_placeholder_client_id(""));
+    }
+
+    // --- POLLING_CANCELLED ---
+
+    #[test]
+    fn cancel_device_polling_sets_flag() {
+        // Reset to known state
+        POLLING_CANCELLED.store(false, Ordering::SeqCst);
+        assert!(!POLLING_CANCELLED.load(Ordering::SeqCst));
+        cancel_device_polling();
+        assert!(POLLING_CANCELLED.load(Ordering::SeqCst));
+        // Reset after test
+        POLLING_CANCELLED.store(false, Ordering::SeqCst);
+    }
 }

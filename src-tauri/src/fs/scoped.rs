@@ -254,4 +254,113 @@ mod tests {
 
         assert_eq!(read, content);
     }
+
+    // --- search_repo_files ---
+
+    #[test]
+    fn search_repo_files_empty_query_returns_empty() {
+        let root = tempdir().expect("temp dir should be created");
+        fs::write(root.path().join("file.md"), "hello world").expect("write should succeed");
+
+        let results = search_repo_files(root.path().to_string_lossy().to_string(), "".to_string())
+            .expect("search should succeed");
+        assert!(results.is_empty(), "empty query should return no results");
+    }
+
+    #[test]
+    fn search_repo_files_whitespace_query_returns_empty() {
+        let root = tempdir().expect("temp dir should be created");
+        fs::write(root.path().join("file.md"), "hello world").expect("write should succeed");
+
+        let results = search_repo_files(root.path().to_string_lossy().to_string(), "   ".to_string())
+            .expect("search should succeed");
+        assert!(results.is_empty(), "whitespace query should return no results");
+    }
+
+    #[test]
+    fn search_repo_files_finds_matching_line() {
+        let root = tempdir().expect("temp dir should be created");
+        fs::write(root.path().join("page.md"), "line one\nHello World\nline three")
+            .expect("write should succeed");
+
+        let results = search_repo_files(root.path().to_string_lossy().to_string(), "hello".to_string())
+            .expect("search should succeed");
+
+        assert_eq!(results.len(), 1, "should find one file");
+        assert_eq!(results[0].file, "page.md");
+        assert_eq!(results[0].matches.len(), 1, "should find one matching line");
+        assert_eq!(results[0].matches[0].line, 2);
+        assert_eq!(results[0].matches[0].content, "Hello World");
+    }
+
+    #[test]
+    fn search_repo_files_is_case_insensitive() {
+        let root = tempdir().expect("temp dir should be created");
+        fs::write(root.path().join("doc.md"), "HYDITOR is great").expect("write should succeed");
+
+        let results = search_repo_files(root.path().to_string_lossy().to_string(), "hyditor".to_string())
+            .expect("search should succeed");
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].matches[0].content, "HYDITOR is great");
+    }
+
+    #[test]
+    fn search_repo_files_skips_binary_extensions() {
+        let root = tempdir().expect("temp dir should be created");
+        fs::write(root.path().join("image.png"), "findme inside binary").expect("write should succeed");
+        fs::write(root.path().join("doc.md"), "findme in markdown").expect("write should succeed");
+
+        let results = search_repo_files(root.path().to_string_lossy().to_string(), "findme".to_string())
+            .expect("search should succeed");
+
+        assert_eq!(results.len(), 1, "should only find the markdown file");
+        assert_eq!(results[0].file, "doc.md");
+    }
+
+    #[test]
+    fn search_repo_files_skips_dot_git_directory() {
+        let root = tempdir().expect("temp dir should be created");
+        let git_dir = root.path().join(".git");
+        fs::create_dir_all(&git_dir).expect("create dir should succeed");
+        fs::write(git_dir.join("config"), "findme in git config").expect("write should succeed");
+        fs::write(root.path().join("readme.md"), "findme in readme").expect("write should succeed");
+
+        let results = search_repo_files(root.path().to_string_lossy().to_string(), "findme".to_string())
+            .expect("search should succeed");
+
+        assert_eq!(results.len(), 1, "should not search .git directory");
+        assert_eq!(results[0].file, "readme.md");
+    }
+
+    #[test]
+    fn search_repo_files_finds_multiple_matches_across_files() {
+        let root = tempdir().expect("temp dir should be created");
+        let sub = root.path().join("posts");
+        fs::create_dir_all(&sub).expect("create dir should succeed");
+        fs::write(root.path().join("a.md"), "target word here").expect("write should succeed");
+        fs::write(sub.join("b.md"), "another target line\nno match\ntarget again")
+            .expect("write should succeed");
+
+        let results = search_repo_files(root.path().to_string_lossy().to_string(), "target".to_string())
+            .expect("search should succeed");
+
+        assert_eq!(results.len(), 2, "should find matches in two files");
+        let total_matches: usize = results.iter().map(|r| r.matches.len()).sum();
+        assert_eq!(total_matches, 3, "should find 3 total matching lines");
+    }
+
+    #[test]
+    fn search_repo_files_reports_correct_line_numbers() {
+        let root = tempdir().expect("temp dir should be created");
+        fs::write(root.path().join("test.txt"), "no\nno\nyes match\nno\nyes another match")
+            .expect("write should succeed");
+
+        let results = search_repo_files(root.path().to_string_lossy().to_string(), "yes".to_string())
+            .expect("search should succeed");
+
+        assert_eq!(results.len(), 1);
+        let lines: Vec<usize> = results[0].matches.iter().map(|m| m.line).collect();
+        assert_eq!(lines, vec![3, 5], "line numbers should be 1-based");
+    }
 }

@@ -104,3 +104,54 @@ pub fn git_commit(repo_path: String, message: String) -> Result<String, String> 
 
     Ok(commit_id.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn git_commit_rejects_empty_message() {
+        let root = tempdir().expect("temp dir should be created");
+        let repo = Repository::init(root.path()).expect("repo should be created");
+        let result = git_commit(
+            repo.path().parent().unwrap().to_string_lossy().to_string(),
+            "".to_string(),
+        );
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "commit message cannot be empty");
+    }
+
+    #[test]
+    fn git_commit_rejects_whitespace_only_message() {
+        let root = tempdir().expect("temp dir should be created");
+        let repo = Repository::init(root.path()).expect("repo should be created");
+        let result = git_commit(
+            repo.path().parent().unwrap().to_string_lossy().to_string(),
+            "   \n\t  ".to_string(),
+        );
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "commit message cannot be empty");
+    }
+
+    #[test]
+    fn git_commit_rejects_nothing_staged() {
+        let root = tempdir().expect("temp dir should be created");
+        Repository::init(root.path()).expect("repo should be created");
+        let result = git_commit(
+            root.path().to_string_lossy().to_string(),
+            "initial commit".to_string(),
+        );
+        assert!(result.is_err());
+        assert!(
+            result.unwrap_err().contains("nothing staged to commit"),
+            "should reject when nothing is staged"
+        );
+    }
+
+    #[test]
+    fn git_unstage_empty_files_is_noop() {
+        let result = git_unstage("/nonexistent".to_string(), vec![]);
+        assert!(result.is_ok(), "unstage with empty files should be a no-op");
+    }
+}

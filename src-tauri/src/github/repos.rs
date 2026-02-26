@@ -138,3 +138,93 @@ pub async fn list_repos(app: tauri::AppHandle) -> Result<Vec<RepoInfo>, String> 
 
     Ok(repos)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- parse_next_link ---
+
+    #[test]
+    fn parse_next_link_extracts_next_url() {
+        let header = r#"<https://api.github.com/user/repos?page=2>; rel="next", <https://api.github.com/user/repos?page=10>; rel="last""#;
+        assert_eq!(
+            parse_next_link(header),
+            Some("https://api.github.com/user/repos?page=2".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_next_link_returns_none_when_no_next() {
+        let header = r#"<https://api.github.com/user/repos?page=1>; rel="prev", <https://api.github.com/user/repos?page=10>; rel="last""#;
+        assert_eq!(parse_next_link(header), None);
+    }
+
+    #[test]
+    fn parse_next_link_handles_single_next_without_other_rels() {
+        let header = r#"<https://api.github.com/user/repos?page=3>; rel="next""#;
+        assert_eq!(
+            parse_next_link(header),
+            Some("https://api.github.com/user/repos?page=3".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_next_link_returns_none_for_empty_string() {
+        assert_eq!(parse_next_link(""), None);
+    }
+
+    #[test]
+    fn parse_next_link_returns_none_for_malformed_header() {
+        let header = "not a valid link header";
+        assert_eq!(parse_next_link(header), None);
+    }
+
+    #[test]
+    fn parse_next_link_handles_whitespace_around_segments() {
+        let header = r#" <https://api.github.com/repos?page=2> ; rel="next" , <https://api.github.com/repos?page=5> ; rel="last" "#;
+        assert_eq!(
+            parse_next_link(header),
+            Some("https://api.github.com/repos?page=2".to_string())
+        );
+    }
+
+    // --- is_auth_failure_status ---
+
+    #[test]
+    fn is_auth_failure_status_401_is_true() {
+        assert!(is_auth_failure_status(
+            reqwest::StatusCode::UNAUTHORIZED,
+            ""
+        ));
+    }
+
+    #[test]
+    fn is_auth_failure_status_403_bad_credentials() {
+        assert!(is_auth_failure_status(
+            reqwest::StatusCode::FORBIDDEN,
+            r#"{"message": "Bad credentials"}"#
+        ));
+    }
+
+    #[test]
+    fn is_auth_failure_status_403_other_reason_is_false() {
+        assert!(!is_auth_failure_status(
+            reqwest::StatusCode::FORBIDDEN,
+            r#"{"message": "API rate limit exceeded"}"#
+        ));
+    }
+
+    #[test]
+    fn is_auth_failure_status_200_is_false() {
+        assert!(!is_auth_failure_status(reqwest::StatusCode::OK, ""));
+    }
+
+    #[test]
+    fn is_auth_failure_status_500_is_false() {
+        assert!(!is_auth_failure_status(
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            "server error"
+        ));
+    }
+}
