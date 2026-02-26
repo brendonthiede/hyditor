@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { activeRepo } from '$lib/stores/repo';
-  import { previewState, setPreviewMode, setViewportPreset } from '$lib/stores/preview';
+  import { previewState, setViewportPreset } from '$lib/stores/preview';
   import { layout } from '$lib/stores/layout';
   import { openPreviewPopup, closePreviewPopup } from '$lib/tauri/window';
 
@@ -25,32 +24,16 @@
 </script>
 
 <nav class="viewport-toolbar">
-  <!-- Preview mode buttons -->
-  <button
-    class:active={$previewState.mode === 'jekyll'}
-    disabled={$previewState.loading || !$activeRepo}
-    on:click={() => {
-      void setPreviewMode('jekyll', $activeRepo?.localPath);
-    }}
+  <!-- Viewport preset dropdown -->
+  <select
+    class="viewport-select"
+    value={$previewState.viewportPreset}
+    on:change={(e) => setViewportPreset(e.currentTarget.value as 'desktop' | 'tablet' | 'mobile')}
   >
-    Full Preview
-  </button>
-  <button
-    class:active={$previewState.mode === 'instant'}
-    on:click={() => {
-      void setPreviewMode('instant');
-    }}
-  >
-    Instant
-  </button>
-
-  <span class="divider" aria-hidden="true"></span>
-
-  <!-- Viewport presets -->
-  <button class:active={$previewState.viewportPreset === 'desktop'} on:click={() => setViewportPreset('desktop')}>Desktop</button>
-  <button class:active={$previewState.viewportPreset === 'tablet'} on:click={() => setViewportPreset('tablet')}>Tablet</button>
-  <button class:active={$previewState.viewportPreset === 'mobile'} on:click={() => setViewportPreset('mobile')}>Mobile</button>
-  <span class="dim">{$previewState.viewport.width}×{$previewState.viewport.height}</span>
+    <option value="desktop">Desktop (1440×900)</option>
+    <option value="tablet">Tablet (768×1024)</option>
+    <option value="mobile">Mobile (375×812)</option>
+  </select>
 
   {#if $previewState.loading}
     <span class="dim">Starting Jekyll…</span>
@@ -59,40 +42,40 @@
   <span class="spacer"></span>
 
   <!-- Panel controls -->
-  <button
-    class="icon-btn"
-    title={$layout.previewPosition === 'side' ? 'Move preview below editor' : 'Move preview beside editor'}
-    on:click={() => layout.togglePreviewPosition()}
-  >
-    {$layout.previewPosition === 'side' ? '⬒' : '⬓'}
-  </button>
+  <div class="icon-group">
+    <button
+      class="icon-btn"
+      title={$layout.previewPosition === 'side' ? 'Move preview below editor' : 'Move preview beside editor'}
+      on:click={() => layout.togglePreviewPosition()}
+    >
+      {$layout.previewPosition === 'side' ? '⬒' : '⬓'}
+    </button>
 
-  <button
-    class="icon-btn"
-    title={$layout.previewFullscreen ? 'Exit fullscreen' : 'Fullscreen preview'}
-    on:click={() => layout.togglePreviewFullscreen()}
-  >
-    {$layout.previewFullscreen ? '⛶' : '⛶'}
-    <span class="icon-label">{$layout.previewFullscreen ? 'Exit' : 'Full'}</span>
-  </button>
+    <button
+      class="icon-btn"
+      title={$layout.previewFullscreen ? 'Exit fullscreen' : 'Fullscreen preview'}
+      on:click={() => layout.togglePreviewFullscreen()}
+    >
+      {$layout.previewFullscreen ? '⛶' : '⛶'}
+    </button>
 
-  <button
-    class="icon-btn"
-    class:active={$layout.previewPoppedOut}
-    title={$layout.previewPoppedOut ? 'Close pop-out window' : 'Pop out to new window'}
-    on:click={() => void handlePopOut()}
-  >
-    ⧉
-    <span class="icon-label">{$layout.previewPoppedOut ? 'Close' : 'Pop Out'}</span>
-  </button>
+    <button
+      class="icon-btn"
+      class:active={$layout.previewPoppedOut}
+      title={$layout.previewPoppedOut ? 'Close pop-out window' : 'Pop out to new window'}
+      on:click={() => void handlePopOut()}
+    >
+      ⧉
+    </button>
 
-  <button
-    class="icon-btn"
-    title="Collapse preview panel"
-    on:click={() => layout.togglePreview()}
-  >
-    ✕
-  </button>
+    <button
+      class="icon-btn"
+      title="Collapse preview panel"
+      on:click={() => layout.togglePreview()}
+    >
+      ✕
+    </button>
+  </div>
 </nav>
 
 <style>
@@ -107,13 +90,6 @@
     overflow-x: auto;
   }
 
-  .divider {
-    width: 1px;
-    height: 1rem;
-    background: #30363d;
-    flex-shrink: 0;
-  }
-
   .spacer {
     flex: 1;
   }
@@ -124,19 +100,29 @@
     white-space: nowrap;
   }
 
+  .icon-group {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+  }
+
   .icon-btn {
     background: transparent;
     border: 1px solid transparent;
     border-radius: 4px;
-    color: inherit;
+    color: #c9d1d9;
     cursor: pointer;
-    padding: 0.15rem 0.35rem;
-    opacity: 0.75;
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 0.2rem;
-    flex-shrink: 0;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
     font-size: 0.85rem;
+    line-height: 1;
+    opacity: 0.75;
+    flex-shrink: 0;
   }
 
   .icon-btn:hover,
@@ -145,12 +131,25 @@
     border-color: #30363d;
   }
 
-  .icon-label {
-    font-size: 0.75rem;
-  }
-
-  button.active {
+  .icon-btn.active {
     border-color: #388bfd;
     color: #79c0ff;
+    opacity: 1;
+  }
+
+  .viewport-select {
+    background: #c9d1d9;
+    border: 1px solid #484f58;
+    border-radius: 4px;
+    color: #0d1117;
+    cursor: pointer;
+    padding: 0.2rem 0.35rem;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+  }
+
+  .viewport-select:hover,
+  .viewport-select:focus-visible {
+    border-color: #8b949e;
   }
 </style>

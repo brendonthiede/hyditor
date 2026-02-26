@@ -19,10 +19,11 @@ import {
 } from '$lib/tauri/git';
 import { readFile, readTree, writeFile } from '$lib/tauri/fs';
 import { requireReauthentication } from '$lib/stores/auth';
-import { fileTree, resetEditorState, setCurrentFileContent } from '$lib/stores/editor';
+import { editorState, fileTree, resetEditorState, setCurrentFileContent } from '$lib/stores/editor';
 import { extractAuthExpiredMessage } from '$lib/utils/authErrors';
 import { getErrorMessage, isContentPath, isMarkdownPath, joinRepoPath } from '$lib/utils/errors';
 import { setPreviewMode } from '$lib/stores/preview';
+import { saveLastSession, loadLastSession, clearLastSession } from '$lib/tauri/session';
 
 export type RepoInfo = {
   owner: string;
@@ -140,6 +141,11 @@ export async function openRepoFile(relativePath: string, localPathOverride?: str
   try {
     const content = await readFile(fullPath);
     setCurrentFileContent(relativePath, content);
+    // Persist the currently opened file for session restore
+    const repo = get(activeRepo);
+    if (repo) {
+      saveLastSession(repo.owner, repo.name, repo.default_branch, relativePath).catch(() => {});
+    }
   } catch {
     return;
   }
@@ -195,6 +201,10 @@ export async function selectRepo(repo: RepoInfo): Promise<void> {
     await refreshBranches();
     await refreshPullRequests();
     void setPreviewMode('jekyll', localPath);
+
+    // Persist selected repo for session restore
+    const currentFile = get(editorState).currentFile;
+    saveLastSession(repo.owner, repo.name, repo.default_branch, currentFile).catch(() => {});
   } catch (error) {
     if (handleAuthExpiredError(error)) {
       return;
@@ -465,6 +475,53 @@ export async function createRepoPullRequest(input: {
   }
 }
 
+export async function restoreLastSession(): Promise<boolean> {
+  try {
+    const session = await loadLastSession();
+    if (!session) return false;
+
+    const repo: RepoInfo = {
+      owner: session.owner,
+      name: session.name,
+      default_branch: session.default_branch
+    };
+
+    const repoKey = `${repo.owner}/${repo.name}`;
+    repoState.update((state) => ({ ...state, cloning: repoKey, error: null }));
+    cloneProgress.set(null);
+
+    try {
+      const localPath = await cloneRepo(repo.owner, repo.name);
+      activeRepo.set({ ...repo, localPath });
+
+      const tree = await readTree(localPath);
+      fileTree.set(tree);
+
+      // Open the last file if it still exists, otherwise fall back to first content file
+      if (session.last_file && tree.some((item) => item.path === session.last_file)) {
+        await openRepoFile(session.last_file, localPath);
+      } else {
+        await openFirstContentFile(localPath);
+      }
+
+      await refreshGitStatus();
+      await refreshBranches();
+      await refreshPullRequests();
+      void setPreviewMode('jekyll', localPath);
+      return true;
+    } catch {
+      // Saved session is stale or repo is unavailable — clear it
+      clearLastSession().catch(() => {});
+      return false;
+    } finally {
+      repoState.update((state) => ({ ...state, cloning: null }));
+      cloneProgress.set(null);
+    }
+  } catch {
+    return false;
+  }
+}
+
 export function resetRepoSession(): void {
   repoList.set([]);
   activeRepo.set(null);
@@ -475,4 +532,5 @@ export function resetRepoSession(): void {
   pullRequestState.set({ entries: [], busy: false, error: null, lastAction: null });
   fileTree.set([]);
   resetEditorState();
+  clearLastSession().catch(() => {});
 }

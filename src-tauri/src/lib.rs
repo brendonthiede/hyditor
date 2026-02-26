@@ -41,6 +41,9 @@ pub fn run() {
             fs::scoped::read_file_scoped,
             fs::scoped::write_file_scoped,
             fs::scoped::search_repo_files,
+            fs::session::save_last_session,
+            fs::session::load_last_session,
+            fs::session::clear_last_session,
             preview::jekyll::start_jekyll,
             preview::jekyll::stop_jekyll
         ])

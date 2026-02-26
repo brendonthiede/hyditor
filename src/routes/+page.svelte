@@ -9,7 +9,7 @@
   import PanelResizeHandle from '$lib/components/PanelResizeHandle.svelte';
   import { writeText as writeClipboardText } from '@tauri-apps/plugin-clipboard-manager';
   import { authState, loadAuthState, logOut } from '$lib/stores/auth';
-  import { activeRepo, gitState, resetRepoSession } from '$lib/stores/repo';
+  import { activeRepo, gitState, resetRepoSession, restoreLastSession } from '$lib/stores/repo';
   import { layout } from '$lib/stores/layout';
   import { onMount } from 'svelte';
 
@@ -18,6 +18,7 @@
   let signOutBusy = false;
   let signOutError: string | null = null;
   let pathCopied = false;
+  let restoringSession = false;
 
   $: authenticated = $authState.status === 'authenticated';
   $: stagedCount = $gitState.entries.filter((entry) => entry.staged).length;
@@ -82,11 +83,28 @@
     }
   }
 
-  onMount(loadAuthState);
+  onMount(async () => {
+    await loadAuthState();
+
+    // After auth succeeds, try to restore the last session
+    const unsubscribe = authState.subscribe(async (state) => {
+      if (state.status === 'authenticated' && !$activeRepo && !restoringSession) {
+        restoringSession = true;
+        try {
+          await restoreLastSession();
+        } finally {
+          restoringSession = false;
+        }
+        unsubscribe();
+      }
+    });
+  });
 </script>
 
 {#if !authenticated}
   <AuthScreen />
+{:else if restoringSession}
+  <div class="restoring">Restoring last session…</div>
 {:else if !$activeRepo}
   <RepoSelector />
 {:else}
@@ -421,6 +439,15 @@
 
   .signout-error {
     color: #f85149;
+  }
+
+  .restoring {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    font-size: 1.1rem;
+    opacity: 0.7;
   }
 
 
