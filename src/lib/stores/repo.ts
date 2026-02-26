@@ -401,6 +401,19 @@ export async function revertChanges(files: string[]): Promise<void> {
 
   await runGitAction(`Reverted ${files.length} file(s).`, async (repoPath) => {
     await revertFiles(repoPath, files);
+
+    // If the currently open file was reverted, reload it from disk.
+    const currentFile = get(editorState).currentFile;
+    if (currentFile && files.includes(currentFile)) {
+      try {
+        const fullPath = joinRepoPath(repoPath, currentFile);
+        const content = await readFile(fullPath);
+        setCurrentFileContent(currentFile, content);
+      } catch {
+        // File was untracked and got deleted — clear the editor.
+        setCurrentFileContent(currentFile, '');
+      }
+    }
   });
 }
 

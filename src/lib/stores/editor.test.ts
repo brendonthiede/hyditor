@@ -3,6 +3,7 @@ import { get } from 'svelte/store';
 import {
   editorState,
   fileTree,
+  lastSavedAt,
   markCurrentContentSaved,
   resetEditorState,
   setCurrentFileContent,
@@ -14,6 +15,7 @@ const INITIAL_CONTENT = '# Welcome to Hyditor\n\nStart editing your Jekyll conte
 describe('editor store', () => {
   beforeEach(() => {
     resetEditorState();
+    lastSavedAt.set(0);
   });
 
   describe('updateCurrentContent', () => {
@@ -60,6 +62,16 @@ describe('editor store', () => {
       const after = get(editorState);
       expect(after.originalContent).toBe('edited version');
       expect(after.currentContent).toBe('edited version');
+    });
+
+    it('updates lastSavedAt timestamp', () => {
+      const beforeSave = get(lastSavedAt);
+      expect(beforeSave).toBe(0);
+
+      markCurrentContentSaved();
+
+      const afterSave = get(lastSavedAt);
+      expect(afterSave).toBeGreaterThan(0);
     });
   });
 

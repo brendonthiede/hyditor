@@ -1,5 +1,11 @@
 import { writable } from 'svelte/store';
 
+/**
+ * Timestamp (ms) of the last successful file save.
+ * GitPanel subscribes to this to auto-refresh git status after edits.
+ */
+export const lastSavedAt = writable<number>(0);
+
 export type TreeItem = {
   path: string;
   is_dir: boolean;
@@ -33,6 +39,7 @@ export function setCurrentFileContent(path: string, content: string): void {
 
 export function markCurrentContentSaved(): void {
   editorState.update((state) => ({ ...state, originalContent: state.currentContent }));
+  lastSavedAt.set(Date.now());
 }
 
 export function resetEditorState(): void {

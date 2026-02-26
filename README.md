@@ -36,7 +36,7 @@ Hyditor targets users who want a simple editing experience for Jekyll sites. The
 - **No pull requests or branch creation from the UI** — users who need PR flows handle them through GitHub directly
 - **One-click publish** — a single "Publish" button stages eligible files, commits (with optional change notes or an auto-generated message), and pushes in one action
 - **Per-file control** — each changed file can be individually reverted (with confirmation) or excluded from publishing via a ⛔ "Do not publish" toggle
-- **Auto-refresh** — the Publish panel refreshes git status automatically on open (no manual Refresh button)
+- **Auto-refresh** — the Publish panel refreshes git status automatically after every file save (debounced 1 s) and polls every 5 s to catch external changes
 - **Branch switching** — users can switch branches via a dropdown; the last-used branch per repo is persisted and restored on next open
 
 ## Quick Start
@@ -244,7 +244,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ Git panel moved into the left sidebar: the blade toggle now has three tabs — **Files**, **Search**, and **Git** — replacing the separate right-side Git panel; clicking the Git badge in the toolbar expands the left panel and switches to the Git blade
 - ✅ Repo filter autofocus: when the repository selection screen opens, the filter input is automatically focused so the user can start typing immediately without clicking it first
 - ✅ "Copy repo path" button in the toolbar copies the local cache path of the active repository to the clipboard; the button briefly shows "Path copied!" as feedback, and its tooltip always shows the full path — lets users jump directly to the repo in their preferred code editor or terminal
-- ✅ Redesigned Publish panel (GitPanel): replaced staged/unstaged sections with a flat changed-files list; each file has a ↩ "Revert" button (with confirmation dialog) and a ⛔ "Do not publish" toggle to exclude files from the next publish; the panel auto-refreshes git status on mount (no manual Refresh button); the toolbar git badge now shows a simple "N changed files" count; backend `git_revert_files` Rust command reverts tracked files via HEAD checkout and removes untracked files
+- ✅ Redesigned Publish panel (GitPanel): replaced staged/unstaged sections with a flat changed-files list; each file has a ↩ "Revert" button (with confirmation dialog) and a ⛔ "Do not publish" toggle to exclude files from the next publish; the panel auto-refreshes git status after every file save (debounced 1 s via `lastSavedAt` store) and polls every 5 s for external changes; the toolbar git badge now shows a simple "N changed files" count; backend `git_revert_files` Rust command reverts tracked files via HEAD checkout and removes untracked files
 - ✅ Preview viewport active indicator: the currently selected viewport preset button (Desktop / Tablet / Mobile) is highlighted with the active style so users can see which size is selected at a glance
 - ✅ Jekyll preview file navigation: the preview iframe is wrapped in a `{#key}` block so clicking a different file in the file tree always navigates to the correct post/draft page — fixes a regression where the iframe `src` attribute update did not trigger navigation in WebKit
 - ✅ Simplified BranchSelector: removed "Create Branch" input/button and "Refresh" button; the component now contains only the branch dropdown; `create_branch` Tauri command, `createBranch` IPC wrapper, and `createRepoBranch` store function removed from codebase
