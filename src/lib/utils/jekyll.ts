@@ -1,7 +1,5 @@
 import { parse as parseYaml } from 'yaml';
 
-const BASE_URL = 'http://127.0.0.1:4000';
-
 /** Markdown extensions recognised by Jekyll. */
 const MD_EXTENSIONS = ['.md', '.markdown'];
 
@@ -239,8 +237,6 @@ export function jekyllUrlForFile(
 
   return `${baseUrl}${path}`;
 }
-
-export { BASE_URL as JEKYLL_BASE_URL };
 
 export function slugify(input: string): string {
   return input

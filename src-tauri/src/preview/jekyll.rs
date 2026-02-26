@@ -1,6 +1,6 @@
 use once_cell::sync::Lazy;
 use std::io;
-use std::net::{SocketAddr, TcpStream};
+use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
@@ -8,13 +8,25 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const PREVIEW_HOST: &str = "127.0.0.1";
-const PREVIEW_PORT: u16 = 4000;
-const PREVIEW_URL: &str = "http://127.0.0.1:4000";
 const PREVIEW_BOOT_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Find a free TCP port by binding to port 0 and letting the OS assign one.
+fn find_free_port() -> Result<u16, String> {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .map_err(|err| format!("failed to find a free port: {err}"))?;
+    let port = listener
+        .local_addr()
+        .map_err(|err| format!("failed to read assigned port: {err}"))?
+        .port();
+    // Dropping the listener releases the port so Jekyll can bind to it.
+    drop(listener);
+    Ok(port)
+}
 
 struct ActiveJekyll {
     child: Child,
     repo_path: PathBuf,
+    port: u16,
 }
 
 static ACTIVE_JEKYLL: Lazy<Mutex<Option<ActiveJekyll>>> = Lazy::new(|| Mutex::new(None));
@@ -27,8 +39,8 @@ fn log_preview(message: &str) {
     eprintln!("[Preview][{ts}] {message}");
 }
 
-fn wait_for_preview_ready(child: &mut Child) -> Result<(), String> {
-    let addr: SocketAddr = format!("{PREVIEW_HOST}:{PREVIEW_PORT}")
+fn wait_for_preview_ready(child: &mut Child, port: u16) -> Result<(), String> {
+    let addr: SocketAddr = format!("{PREVIEW_HOST}:{port}")
         .parse()
         .map_err(|err| format!("invalid preview address: {err}"))?;
 
@@ -67,48 +79,6 @@ fn kill_process(child: &mut Child) -> io::Result<()> {
     Ok(())
 }
 
-fn port_in_use() -> bool {
-    let addr: SocketAddr = format!("{PREVIEW_HOST}:{PREVIEW_PORT}")
-        .parse()
-        .expect("static address is valid");
-    TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok()
-}
-
-/// Kill any process currently bound to PREVIEW_PORT and wait for it to release
-/// the port before returning.  This handles leftover Jekyll processes from
-/// previous app sessions that are no longer tracked by ACTIVE_JEKYLL.
-fn ensure_port_free() -> Result<(), String> {
-    if !port_in_use() {
-        return Ok(());
-    }
-
-    log_preview(&format!(
-        "port {PREVIEW_PORT} is already in use — killing occupying process"
-    ));
-
-    // fuser -k sends SIGKILL to every process bound to the port.
-    let _ = Command::new("bash")
-        .args([
-            "-c",
-            &format!("fuser -k {PREVIEW_PORT}/tcp 2>/dev/null || true"),
-        ])
-        .status();
-
-    // Wait up to 5 s for the port to be released.
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while Instant::now() < deadline {
-        thread::sleep(Duration::from_millis(200));
-        if !port_in_use() {
-            log_preview("port is now free");
-            return Ok(());
-        }
-    }
-
-    Err(format!(
-        "Port {PREVIEW_PORT} is still in use after attempting to free it. \
-         Kill the process manually and try again."
-    ))
-}
 
 fn shell_command_exists(name: &str) -> bool {
     Command::new("bash")
@@ -138,7 +108,7 @@ fn bundle_install(repo_path: &Path) -> Result<(), String> {
     }
 }
 
-fn start_jekyll_process(repo_path: &Path) -> Result<Child, String> {
+fn start_jekyll_process(repo_path: &Path, port: u16) -> Result<Child, String> {
     let gemfile_exists = repo_path.join("Gemfile").exists();
     let use_bundle = gemfile_exists && shell_command_exists("bundle");
     let has_jekyll = shell_command_exists("jekyll");
@@ -154,10 +124,8 @@ fn start_jekyll_process(repo_path: &Path) -> Result<Child, String> {
         bundle_install(repo_path)?;
     }
 
-    ensure_port_free()?;
-
     let jekyll_args = format!(
-        "serve --host {PREVIEW_HOST} --port {PREVIEW_PORT} --baseurl \"\" --drafts --livereload"
+        "serve --host {PREVIEW_HOST} --port {port} --baseurl \"\" --drafts --livereload"
     );
     let shell_cmd = if use_bundle {
         format!("bundle exec jekyll {jekyll_args}")
@@ -192,7 +160,7 @@ pub fn start_jekyll(repo_path: String) -> Result<String, String> {
             if state.repo_path == repo_path {
                 if state.child.try_wait().map_err(|err| format!("failed checking Jekyll process: {err}"))?.is_none() {
                     log_preview("reusing existing Jekyll process");
-                    return Ok(PREVIEW_URL.to_string());
+                    return Ok(format!("http://{PREVIEW_HOST}:{}", state.port));
                 }
             }
 
@@ -201,17 +169,26 @@ pub fn start_jekyll(repo_path: String) -> Result<String, String> {
         }
     }
 
-    log_preview(&format!("starting Jekyll for {}", repo_path.to_string_lossy()));
-    let mut child = start_jekyll_process(&repo_path)?;
+    let port = find_free_port()?;
+    log_preview(&format!(
+        "starting Jekyll for {} on port {port}",
+        repo_path.to_string_lossy()
+    ));
+    let mut child = start_jekyll_process(&repo_path, port)?;
 
-    match wait_for_preview_ready(&mut child) {
+    match wait_for_preview_ready(&mut child, port) {
         Ok(_) => {
+            let preview_url = format!("http://{PREVIEW_HOST}:{port}");
             let mut active = ACTIVE_JEKYLL
                 .lock()
                 .map_err(|_| "failed to lock preview state".to_string())?;
-            *active = Some(ActiveJekyll { child, repo_path });
-            log_preview("Jekyll preview ready");
-            Ok(PREVIEW_URL.to_string())
+            *active = Some(ActiveJekyll {
+                child,
+                repo_path,
+                port,
+            });
+            log_preview(&format!("Jekyll preview ready at {preview_url}"));
+            Ok(preview_url)
         }
         Err(err) => {
             let _ = kill_process(&mut child);
@@ -242,8 +219,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn preview_url_constant_matches_expected() {
-        assert_eq!(PREVIEW_URL, "http://127.0.0.1:4000");
+    fn find_free_port_returns_nonzero() {
+        let port = find_free_port().expect("should find a free port");
+        assert_ne!(port, 0, "port should be nonzero");
+    }
+
+    #[test]
+    fn find_free_port_returns_unique_ports() {
+        let p1 = find_free_port().unwrap();
+        let p2 = find_free_port().unwrap();
+        // While not strictly guaranteed, getting different ports from two
+        // consecutive calls is extremely likely when no other allocation
+        // is happening on the same ports.
+        assert_ne!(p1, p2, "consecutive calls should return different ports");
     }
 
     #[test]
@@ -262,8 +250,7 @@ mod tests {
     }
 
     #[test]
-    fn preview_host_and_port_constants() {
+    fn preview_host_constant() {
         assert_eq!(PREVIEW_HOST, "127.0.0.1");
-        assert_eq!(PREVIEW_PORT, 4000);
     }
 }
