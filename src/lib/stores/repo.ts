@@ -5,7 +5,6 @@ import {
 import {
   cloneRepo,
   commit,
-  createBranch,
   listBranches,
   push,
   stage,
@@ -283,20 +282,6 @@ export async function switchRepoBranch(branchName: string): Promise<void> {
   }
 
   await runBranchAction(`Switched to branch ${trimmed}.`, async (repoPath) => {
-    await switchBranch(repoPath, trimmed);
-    branchState.update((state) => ({ ...state, current: trimmed }));
-  });
-}
-
-export async function createRepoBranch(branchName: string): Promise<void> {
-  const trimmed = branchName.trim();
-  if (!trimmed) {
-    branchUiState.update((state) => ({ ...state, error: 'Branch name is required.' }));
-    return;
-  }
-
-  await runBranchAction(`Created and switched to ${trimmed}.`, async (repoPath) => {
-    await createBranch(repoPath, trimmed);
     await switchBranch(repoPath, trimmed);
     branchState.update((state) => ({ ...state, current: trimmed }));
   });

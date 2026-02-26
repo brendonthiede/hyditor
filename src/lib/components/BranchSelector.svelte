@@ -1,8 +1,7 @@
 <script lang="ts">
-  import { createRepoBranch, branchState, branchUiState, refreshBranches, switchRepoBranch } from '$lib/stores/repo';
+  import { branchState, branchUiState, switchRepoBranch } from '$lib/stores/repo';
 
   let selectedBranch = '';
-  let newBranchName = '';
 
   $: if ($branchState.branches.length > 0 && !selectedBranch) {
     selectedBranch = $branchState.current;
@@ -19,19 +18,6 @@
 
     await switchRepoBranch(selectedBranch);
   }
-
-  async function onCreateBranch(): Promise<void> {
-    const name = newBranchName.trim();
-    if (!name) {
-      return;
-    }
-
-    await createRepoBranch(name);
-    if (!$branchUiState.error) {
-      newBranchName = '';
-      selectedBranch = name;
-    }
-  }
 </script>
 
 <section class="branch-selector">
@@ -47,19 +33,6 @@
         <option value={branch}>{branch}</option>
       {/each}
     </select>
-    <button on:click={refreshBranches} disabled={$branchUiState.busy}>Refresh</button>
-  </div>
-
-  <div class="row">
-    <input
-      type="text"
-      bind:value={newBranchName}
-      placeholder="new-branch-name"
-      disabled={$branchUiState.busy}
-    />
-    <button on:click={onCreateBranch} disabled={$branchUiState.busy || !newBranchName.trim()}>
-      Create branch
-    </button>
   </div>
 
   {#if $branchUiState.error}
@@ -73,7 +46,6 @@
   .branch-selector {
     display: grid;
     gap: 0.4rem;
-    min-width: 20rem;
   }
 
   .row {
@@ -82,8 +54,7 @@
     align-items: center;
   }
 
-  select,
-  input {
+  select {
     min-width: 0;
     flex: 1;
   }

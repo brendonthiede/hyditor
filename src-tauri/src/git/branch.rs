@@ -1,20 +1,6 @@
 use git2::{BranchType, Repository};
 
 #[tauri::command]
-pub fn create_branch(repo_path: String, branch_name: String) -> Result<(), String> {
-    let repo = Repository::open(repo_path).map_err(|e| format!("failed to open repo: {e}"))?;
-    let head_commit = repo
-        .head()
-        .and_then(|h| h.peel_to_commit())
-        .map_err(|e| format!("failed to resolve HEAD: {e}"))?;
-
-    repo.branch(&branch_name, &head_commit, false)
-        .map_err(|e| format!("failed to create branch: {e}"))?;
-
-    Ok(())
-}
-
-#[tauri::command]
 pub fn list_branches(repo_path: String) -> Result<Vec<String>, String> {
     let repo = Repository::open(repo_path).map_err(|e| format!("failed to open repo: {e}"))?;
     let mut branches = Vec::new();
@@ -83,22 +69,21 @@ mod tests {
         assert!(!branches.is_empty(), "should have at least one branch");
     }
 
-    #[test]
-    fn create_and_list_branch() {
-        let (_root, path) = init_repo_with_commit();
-        create_branch(path.clone(), "feature-test".to_string()).expect("create should succeed");
-        let branches = list_branches(path).expect("list should succeed");
-        assert!(
-            branches.contains(&"feature-test".to_string()),
-            "created branch should appear in list: {:?}",
-            branches
-        );
+    /// Helper: create a local branch using git2 directly (for test setup only).
+    fn create_test_branch(repo_path: &str, name: &str) {
+        let repo = Repository::open(repo_path).expect("repo should open");
+        let head_commit = repo
+            .head()
+            .and_then(|h| h.peel_to_commit())
+            .expect("HEAD should resolve");
+        repo.branch(name, &head_commit, false)
+            .expect("branch should be created");
     }
 
     #[test]
     fn switch_branch_works() {
         let (_root, path) = init_repo_with_commit();
-        create_branch(path.clone(), "dev".to_string()).expect("create should succeed");
+        create_test_branch(&path, "dev");
         switch_branch(path.clone(), "dev".to_string()).expect("switch should succeed");
 
         let repo = Repository::open(&path).expect("repo should open");
@@ -108,13 +93,5 @@ mod tests {
             "dev",
             "HEAD should point to the new branch"
         );
-    }
-
-    #[test]
-    fn create_duplicate_branch_fails() {
-        let (_root, path) = init_repo_with_commit();
-        create_branch(path.clone(), "dup".to_string()).expect("first create should succeed");
-        let result = create_branch(path, "dup".to_string());
-        assert!(result.is_err(), "creating a duplicate branch should fail");
     }
 }

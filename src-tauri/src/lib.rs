@@ -32,7 +32,6 @@ pub fn run() {
             git::commit::git_unstage,
             git::commit::git_commit,
             git::push::git_push,
-            git::branch::create_branch,
             git::branch::list_branches,
             git::branch::switch_branch,
             fs::scoped::read_tree,

@@ -240,6 +240,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ "Copy repo path" button in the toolbar copies the local cache path of the active repository to the clipboard; the button briefly shows "Path copied!" as feedback, and its tooltip always shows the full path — lets users jump directly to the repo in their preferred code editor or terminal
 - ✅ Preview viewport active indicator: the currently selected viewport preset button (Desktop / Tablet / Mobile) is highlighted with the active style so users can see which size is selected at a glance
 - ✅ Jekyll preview file navigation: the preview iframe is wrapped in a `{#key}` block so clicking a different file in the file tree always navigates to the correct post/draft page — fixes a regression where the iframe `src` attribute update did not trigger navigation in WebKit
+- ✅ Simplified BranchSelector: removed "Create Branch" input/button and "Refresh" button; the component now contains only the branch dropdown; `create_branch` Tauri command, `createBranch` IPC wrapper, and `createRepoBranch` store function removed from codebase
 
 ## Contributor Workflow
 
@@ -345,12 +346,12 @@ For in-app UI use (e.g. the auth screen), place SVG or PNG assets under `src/lib
 The current stage/unstage/commit/push workflow is being replaced with a streamlined "Publish" flow:
 
 1. ~~**Remove PRDialog component**~~ ✅ — deleted `PRDialog.svelte` and all references; removed `create_pr`, `list_prs` Tauri commands and `pull_request.rs` backend module
-2. **Simplify BranchSelector** — remove "Create Branch" input/button and "Refresh" button; keep only the branch dropdown; remove `create_branch` Tauri command from backend
+2. ~~**Simplify BranchSelector**~~ ✅ — removed "Create Branch" input/button and "Refresh" button; kept only the branch dropdown; removed `create_branch` Tauri command from backend
 3. **Redesign GitPanel** — replace staged/unstaged sections with a flat changed-files list; each file has "Revert" (with confirmation dialog) and ⛔ "Do not publish" toggle; auto-refresh git status on panel mount (replaces manual Refresh button)
 4. **Single Publish action** — replace separate Commit/Push buttons with one "Publish" button that stages eligible files → commits (with optional "Change notes" or auto-generated message `"Changes made using Hyditor on M/D/YYYY"`) → pushes
 5. **Add `git_discard_file` backend command** — new Rust command to revert individual files (checkout from HEAD for tracked files, delete for untracked files)
 6. **Persist current branch per-repo** — rename `default_branch` to `last_branch` in session; save on branch switch and file open; restore on session reload with graceful fallback if branch no longer exists
-7. **Remove dead code** — `git_unstage` command, `pullRequestState`/`branchUiState` stores, `createRepoBranch`/`refreshPullRequests`/`createRepoPullRequest` store functions, `unstage`/`createBranch` Tauri wrappers
+7. **Remove dead code** — `git_unstage` command, `pullRequestState`/`branchUiState` stores, `refreshPullRequests`/`createRepoPullRequest` store functions, `unstage` Tauri wrapper
 
 ### Future
 

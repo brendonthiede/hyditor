@@ -37,10 +37,6 @@ export async function listBranches(repoPath: string): Promise<string[]> {
   return tauriInvoke<string[]>('list_branches', { repoPath });
 }
 
-export async function createBranch(repoPath: string, branchName: string): Promise<void> {
-  await tauriInvoke('create_branch', { repoPath, branchName });
-}
-
 export async function switchBranch(repoPath: string, branchName: string): Promise<void> {
   await tauriInvoke('switch_branch', { repoPath, branchName });
 }
