@@ -33,6 +33,10 @@ export async function push(repoPath: string): Promise<void> {
   await tauriInvoke('git_push', { repoPath });
 }
 
+export async function publish(repoPath: string, files: string[], message: string): Promise<string> {
+  return tauriInvoke<string>('git_publish', { repoPath, files, message });
+}
+
 export async function revertFiles(repoPath: string, files: string[]): Promise<void> {
   await tauriInvoke('git_revert_files', { repoPath, files });
 }

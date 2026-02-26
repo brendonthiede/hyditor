@@ -1,11 +1,9 @@
 <script lang="ts">
   import {
-    commitChanges,
     gitState,
-    pushChanges,
+    publishChanges,
     refreshGitStatus,
     revertChanges,
-    stageFiles,
   } from '$lib/stores/repo';
   import { onMount } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
@@ -71,12 +69,11 @@
     const files = publishable.map((e) => e.path);
     if (files.length === 0) return;
 
-    // Stage only the publishable files, commit, and push.
-    await stageFiles(files);
-    if ($gitState.error) return;
-    await commitChanges(commitMessage || 'Update site content');
-    if ($gitState.error) return;
-    await pushChanges();
+    const now = new Date();
+    const defaultMessage = `Changes made using Hyditor on ${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()}`;
+    const message = commitMessage.trim() || defaultMessage;
+
+    await publishChanges(files, message);
     if (!$gitState.error) {
       commitMessage = '';
       excluded.clear();

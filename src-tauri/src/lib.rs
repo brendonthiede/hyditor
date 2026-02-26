@@ -32,6 +32,7 @@ pub fn run() {
             git::commit::git_unstage,
             git::commit::git_commit,
             git::commit::git_revert_files,
+            git::publish::git_publish,
             git::push::git_push,
             git::branch::list_branches,
             git::branch::switch_branch,

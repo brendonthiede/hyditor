@@ -6,6 +6,7 @@ import {
   cloneRepo,
   commit,
   listBranches,
+  publish,
   push,
   revertFiles,
   stage,
@@ -374,6 +375,22 @@ export async function commitChanges(message: string): Promise<void> {
 export async function pushChanges(): Promise<void> {
   await runGitAction('Pushed current branch to origin.', async (repoPath) => {
     await push(repoPath);
+  });
+}
+
+export async function publishChanges(files: string[], message: string): Promise<void> {
+  if (files.length === 0) {
+    return;
+  }
+
+  const trimmed = message.trim();
+  if (!trimmed) {
+    gitState.update((state) => ({ ...state, error: 'Commit message is required.' }));
+    return;
+  }
+
+  await runGitAction(`Published ${files.length} file(s).`, async (repoPath) => {
+    await publish(repoPath, files, trimmed);
   });
 }
 
