@@ -99,13 +99,23 @@ export async function setPreviewMode(
       error: null
     }));
   } catch (error) {
+    const JEKYLL_GUIDE = 'https://github.com/brendonthiede/hyditor/blob/main/docs/jekyll-prerequisites.md';
+    const detail =
+      typeof error === 'string' ? error
+      : error instanceof Error ? error.message
+      : '';
+    const alreadyHasLink = detail.includes(JEKYLL_GUIDE);
+    const suffix = alreadyHasLink ? '' : `\n\nFor setup instructions, see: ${JEKYLL_GUIDE}`;
+    const message = detail
+      ? `${detail}${suffix}`
+      : `Failed to start Jekyll preview.\n\nFor setup instructions, see: ${JEKYLL_GUIDE}`;
     previewState.update((state) => ({
       ...state,
       mode: 'instant',
       jekyllBaseUrl: null,
       repoPath: null,
       loading: false,
-      error: error instanceof Error ? error.message : 'Failed to start Jekyll preview.'
+      error: message
     }));
   }
 }

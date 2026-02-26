@@ -92,12 +92,8 @@ fn kill_process(child: &mut Child) -> io::Result<()> {
 
 
 fn shell_command_exists(name: &str) -> bool {
-    // Run the command with --version instead of just checking if the shim/binary
-    // exists.  Version managers like rbenv install shims that are always on PATH
-    // but exit non-zero when the required Ruby version is not installed.  Using
-    // `--version` catches that case.
     Command::new("bash")
-        .args(["-l", "-c", &format!("{name} --version >/dev/null 2>&1")])
+        .args(["-l", "-c", &format!("command -v {name} >/dev/null 2>&1")])
         .status()
         .map(|status| status.success())
         .unwrap_or(false)
