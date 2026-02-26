@@ -16,12 +16,18 @@
     '_site',
     '.sass-cache',
     '.jekyll-cache',
-    '.jekyll-metadata'
+    '.jekyll-metadata',
+    '_includes',
+    '_layouts',
+    '_sass'
   ]);
 
-  /** File extensions that are binary/non-previewable. */
+  /** Subdirectory names under `assets/` that are hidden in Jekyll-relevant mode. */
+  const ASSETS_HIDDEN_SUBDIRS = new Set(['js', 'css', 'scss']);
+
+  /** File extensions that are binary/non-previewable (images excluded — they
+   *  are referenced in posts and should remain visible in the tree). */
   const BINARY_EXTENSIONS = new Set([
-    '.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp', '.bmp', '.tiff', '.avif',
     '.woff', '.woff2', '.ttf', '.eot', '.otf',
     '.zip', '.tar', '.gz', '.bz2', '.br', '.7z', '.rar',
     '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
@@ -38,6 +44,17 @@
 
   function topLevelName(path: string): string {
     return path.split('/')[0];
+  }
+
+  /**
+   * Returns true when the item lives under one of the hidden subdirectories of
+   * the top-level `assets/` folder (e.g. `assets/js/…`, `assets/css/…`,
+   * `assets/scss/…`).
+   */
+  function isAssetsHiddenSubdir(path: string): boolean {
+    const parts = path.split('/');
+    if (parts.length < 2 || parts[0] !== 'assets') return false;
+    return ASSETS_HIDDEN_SUBDIRS.has(parts[1]);
   }
 
   const collapsedDirs = writable<Set<string>>(new Set());
@@ -139,6 +156,9 @@
       // Remove Jekyll-irrelevant top-level entries (whole subtrees already
       // excluded by checking the first path segment).
       filtered = filtered.filter((item) => !JEKYLL_IGNORED_NAMES.has(topLevelName(item.path)));
+      // Hide assets/js, assets/css, assets/scss subdirectories (but keep
+      // other assets content like images visible).
+      filtered = filtered.filter((item) => !isAssetsHiddenSubdir(item.path));
       // Remove binary files (keep directories — their children drive visibility).
       filtered = filtered.filter((item) => item.is_dir || !isBinary(item.path));
     }
@@ -172,6 +192,7 @@
     ? $fileTree.filter(
         (item) =>
           JEKYLL_IGNORED_NAMES.has(topLevelName(item.path)) ||
+          isAssetsHiddenSubdir(item.path) ||
           (!item.is_dir && isBinary(item.path))
       ).length
     : 0;
