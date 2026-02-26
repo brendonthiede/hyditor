@@ -47,6 +47,21 @@ export function isMarkdownPath(path: string): boolean {
 }
 
 /**
+ * Check whether a file path points to an HTML file (`.html`).
+ */
+export function isHtmlPath(path: string): boolean {
+  return path.toLowerCase().endsWith('.html');
+}
+
+/**
+ * Check whether a file path points to a content file that can be edited and
+ * previewed — currently Markdown (`.md`, `.markdown`) or HTML (`.html`).
+ */
+export function isContentPath(path: string): boolean {
+  return isMarkdownPath(path) || isHtmlPath(path);
+}
+
+/**
  * Join a repo local path with a relative file path, normalising separators.
  */
 export function joinRepoPath(localPath: string, relativePath: string): string {

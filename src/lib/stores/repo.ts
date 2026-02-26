@@ -21,7 +21,7 @@ import { readFile, readTree, writeFile } from '$lib/tauri/fs';
 import { requireReauthentication } from '$lib/stores/auth';
 import { fileTree, resetEditorState, setCurrentFileContent } from '$lib/stores/editor';
 import { extractAuthExpiredMessage } from '$lib/utils/authErrors';
-import { getErrorMessage, isMarkdownPath, joinRepoPath } from '$lib/utils/errors';
+import { getErrorMessage, isContentPath, isMarkdownPath, joinRepoPath } from '$lib/utils/errors';
 import { setPreviewMode } from '$lib/stores/preview';
 
 export type RepoInfo = {
@@ -107,19 +107,27 @@ function handleNotAuthenticatedError(error: unknown): boolean {
   return true;
 }
 
-// isMarkdownPath and joinRepoPath imported from '$lib/utils/errors'
+// isContentPath, isMarkdownPath, and joinRepoPath imported from '$lib/utils/errors'
 
-async function openFirstMarkdownFile(localPath: string): Promise<void> {
+async function openFirstContentFile(localPath: string): Promise<void> {
   const tree = get(fileTree);
-  const firstMarkdownFile = tree
-    .filter((item) => !item.is_dir && isMarkdownPath(item.path))
-    .sort((left, right) => left.path.localeCompare(right.path))[0];
+  // Prefer markdown files, fall back to HTML if no markdown is found.
+  const contentFiles = tree
+    .filter((item) => !item.is_dir && isContentPath(item.path))
+    .sort((left, right) => {
+      // Sort markdown before HTML, then alphabetically.
+      const aIsMd = isMarkdownPath(left.path) ? 0 : 1;
+      const bIsMd = isMarkdownPath(right.path) ? 0 : 1;
+      if (aIsMd !== bIsMd) return aIsMd - bIsMd;
+      return left.path.localeCompare(right.path);
+    });
 
-  if (!firstMarkdownFile) {
+  const firstFile = contentFiles[0];
+  if (!firstFile) {
     return;
   }
 
-  await openRepoFile(firstMarkdownFile.path, localPath);
+  await openRepoFile(firstFile.path, localPath);
 }
 
 export async function openRepoFile(relativePath: string, localPathOverride?: string): Promise<void> {
@@ -181,7 +189,7 @@ export async function selectRepo(repo: RepoInfo): Promise<void> {
 
     const tree = await readTree(localPath);
     fileTree.set(tree);
-    await openFirstMarkdownFile(localPath);
+    await openFirstContentFile(localPath);
 
     await refreshGitStatus();
     await refreshBranches();
@@ -251,7 +259,7 @@ async function runBranchAction(actionLabel: string, action: (repoPath: string) =
     await refreshGitStatus();
     const tree = await readTree(current.localPath);
     fileTree.set(tree);
-    await openFirstMarkdownFile(current.localPath);
+    await openFirstContentFile(current.localPath);
     branchUiState.update((state) => ({ ...state, lastAction: actionLabel }));
   } catch (error) {
     if (handleAuthExpiredError(error)) {

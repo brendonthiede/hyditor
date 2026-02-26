@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getErrorMessage, isMarkdownPath, joinRepoPath, toErrorMessage } from './errors';
+import { getErrorMessage, isContentPath, isHtmlPath, isMarkdownPath, joinRepoPath, toErrorMessage } from './errors';
 
 describe('getErrorMessage', () => {
   it('extracts message from an Error instance', () => {
@@ -92,6 +92,54 @@ describe('isMarkdownPath', () => {
 
   it('returns false for empty string', () => {
     expect(isMarkdownPath('')).toBe(false);
+  });
+});
+
+describe('isHtmlPath', () => {
+  it('returns true for .html files', () => {
+    expect(isHtmlPath('page.html')).toBe(true);
+    expect(isHtmlPath('_posts/2024-01-01-hello.html')).toBe(true);
+  });
+
+  it('is case-insensitive', () => {
+    expect(isHtmlPath('page.HTML')).toBe(true);
+    expect(isHtmlPath('page.Html')).toBe(true);
+  });
+
+  it('returns false for non-html files', () => {
+    expect(isHtmlPath('style.css')).toBe(false);
+    expect(isHtmlPath('post.md')).toBe(false);
+    expect(isHtmlPath('page.htm')).toBe(false);
+  });
+
+  it('returns false for empty string', () => {
+    expect(isHtmlPath('')).toBe(false);
+  });
+});
+
+describe('isContentPath', () => {
+  it('returns true for markdown files', () => {
+    expect(isContentPath('post.md')).toBe(true);
+    expect(isContentPath('post.markdown')).toBe(true);
+  });
+
+  it('returns true for html files', () => {
+    expect(isContentPath('page.html')).toBe(true);
+  });
+
+  it('returns false for other file types', () => {
+    expect(isContentPath('style.css')).toBe(false);
+    expect(isContentPath('script.js')).toBe(false);
+    expect(isContentPath('data.json')).toBe(false);
+  });
+
+  it('is case-insensitive', () => {
+    expect(isContentPath('README.MD')).toBe(true);
+    expect(isContentPath('page.HTML')).toBe(true);
+  });
+
+  it('returns false for empty string', () => {
+    expect(isContentPath('')).toBe(false);
   });
 });
 

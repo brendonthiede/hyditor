@@ -3,14 +3,39 @@ import { parse as parseYaml } from 'yaml';
 /** Markdown extensions recognised by Jekyll. */
 const MD_EXTENSIONS = ['.md', '.markdown'];
 
+/** HTML extensions recognised by Jekyll. */
+const HTML_EXTENSIONS = ['.html'];
+
+/** All content extensions (markdown + HTML) that Jekyll processes. */
+const CONTENT_EXTENSIONS = [...MD_EXTENSIONS, ...HTML_EXTENSIONS];
+
 function isMarkdownFile(path: string): boolean {
   const lower = path.toLowerCase();
   return MD_EXTENSIONS.some((ext) => lower.endsWith(ext));
 }
 
+function isHtmlFile(path: string): boolean {
+  const lower = path.toLowerCase();
+  return HTML_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+/** Check whether a file is a content file (markdown or HTML) that Jekyll processes. */
+export function isContentFile(path: string): boolean {
+  const lower = path.toLowerCase();
+  return CONTENT_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
 /** Strip the markdown extension from the end of a path and return the base. */
 function stripMarkdownExt(path: string): string {
   for (const ext of MD_EXTENSIONS) {
+    if (path.endsWith(ext)) return path.slice(0, -ext.length);
+  }
+  return path;
+}
+
+/** Strip the content extension (.md, .markdown, .html) from the end of a path. */
+function stripContentExt(path: string): string {
+  for (const ext of CONTENT_EXTENSIONS) {
     if (path.endsWith(ext)) return path.slice(0, -ext.length);
   }
   return path;
@@ -138,7 +163,7 @@ export function jekyllUrlForFile(
   fileContent: string = '',
   sitePermalink: string = 'date'
 ): string {
-  if (!isMarkdownFile(filePath)) {
+  if (!isMarkdownFile(filePath) && !isHtmlFile(filePath)) {
     return baseUrl;
   }
 
@@ -171,7 +196,11 @@ export function jekyllUrlForFile(
 
   if (!isPost && !isDraft) {
     // Regular pages: not subject to the post permalink template.
-    if (rel === 'index.md' || rel === 'index.markdown') return `${baseUrl}/`;
+    if (rel === 'index.md' || rel === 'index.markdown' || rel === 'index.html') return `${baseUrl}/`;
+    if (isHtmlFile(filePath)) {
+      // HTML pages keep their extension in Jekyll output.
+      return `${baseUrl}/${rel}`;
+    }
     const urlPath = stripMarkdownExt(rel) + '/';
     return `${baseUrl}/${urlPath}`;
   }
@@ -180,7 +209,7 @@ export function jekyllUrlForFile(
   let year: string, month: string, day: string, titleSlug: string;
 
   if (isPost) {
-    const postMatch = rel.match(/^_posts\/(\d{4})-(\d{2})-(\d{2})-(.+)\.(?:md|markdown)$/);
+    const postMatch = rel.match(/^_posts\/(\d{4})-(\d{2})-(\d{2})-(.+)\.(?:md|markdown|html)$/);
     if (!postMatch) return baseUrl;
     [, year, month, day, titleSlug] = postMatch as [string, string, string, string, string];
   } else {
@@ -189,7 +218,7 @@ export function jekyllUrlForFile(
     year = String(today.getFullYear());
     month = String(today.getMonth() + 1).padStart(2, '0');
     day = String(today.getDate()).padStart(2, '0');
-    const draftMatch = rel.match(/^_drafts\/(.+)\.(?:md|markdown)$/);
+    const draftMatch = rel.match(/^_drafts\/(.+)\.(?:md|markdown|html)$/);
     if (!draftMatch) return baseUrl;
     // Strip an optional leading date prefix (YYYY-MM-DD-) so drafts named like
     // posts get the same slug treatment Jekyll applies.

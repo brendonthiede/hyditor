@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPostFilename, jekyllUrlForFile, parseSitePermalink, slugify } from './jekyll';
+import { buildPostFilename, isContentFile, jekyllUrlForFile, parseSitePermalink, slugify } from './jekyll';
 
 const BASE = 'http://127.0.0.1:4000';
 const REPO = '/home/user/.cache/hyditor/repos/owner/my-site';
@@ -77,8 +77,24 @@ describe('parseSitePermalink', () => {
   });
 });
 
+describe('isContentFile', () => {
+  it('returns true for markdown files', () => {
+    expect(isContentFile('post.md')).toBe(true);
+    expect(isContentFile('post.markdown')).toBe(true);
+  });
+
+  it('returns true for html files', () => {
+    expect(isContentFile('page.html')).toBe(true);
+  });
+
+  it('returns false for other file types', () => {
+    expect(isContentFile('style.css')).toBe(false);
+    expect(isContentFile('script.js')).toBe(false);
+  });
+});
+
 describe('jekyllUrlForFile', () => {
-  it('returns baseUrl for a non-markdown file', () => {
+  it('returns baseUrl for a non-content file', () => {
     expect(jekyllUrlForFile(BASE, REPO, `${REPO}/assets/style.css`)).toBe(BASE);
   });
 
@@ -310,5 +326,63 @@ describe('jekyllUrlForFile — malformed post filename', () => {
     expect(
       jekyllUrlForFile(BASE, REPO, `${REPO}/_posts/no-date-here.md`)
     ).toBe(BASE);
+  });
+});
+
+describe('jekyllUrlForFile — HTML files', () => {
+  it('maps an HTML _posts file to its dated permalink', () => {
+    expect(
+      jekyllUrlForFile(BASE, REPO, `${REPO}/_posts/2024-03-15-hello-world.html`)
+    ).toBe(`${BASE}/2024/03/15/hello-world.html`);
+  });
+
+  it('maps an HTML _posts file with categories', () => {
+    const content = '---\ncategories: [devops]\n---\n\nContent';
+    expect(
+      jekyllUrlForFile(BASE, REPO, `${REPO}/_posts/2025-02-01-k8s-lab.html`, content, 'date')
+    ).toBe(`${BASE}/devops/2025/02/01/k8s-lab.html`);
+  });
+
+  it('maps an HTML _drafts file to a dated permalink using today', () => {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    expect(
+      jekyllUrlForFile(BASE, REPO, `${REPO}/_drafts/my-draft.html`)
+    ).toBe(`${BASE}/${y}/${m}/${d}/my-draft.html`);
+  });
+
+  it('maps index.html to the root URL', () => {
+    expect(jekyllUrlForFile(BASE, REPO, `${REPO}/index.html`)).toBe(`${BASE}/`);
+  });
+
+  it('maps a top-level HTML page keeping its extension', () => {
+    expect(jekyllUrlForFile(BASE, REPO, `${REPO}/about.html`)).toBe(`${BASE}/about.html`);
+  });
+
+  it('maps a nested HTML page keeping its extension', () => {
+    expect(
+      jekyllUrlForFile(BASE, REPO, `${REPO}/docs/guide.html`)
+    ).toBe(`${BASE}/docs/guide.html`);
+  });
+
+  it('returns baseUrl for HTML in non-served underscore directories', () => {
+    expect(jekyllUrlForFile(BASE, REPO, `${REPO}/_layouts/default.html`)).toBe(BASE);
+    expect(jekyllUrlForFile(BASE, REPO, `${REPO}/_includes/header.html`)).toBe(BASE);
+  });
+
+  it('uses front matter permalink for HTML posts', () => {
+    const content = '---\npermalink: /my/custom/path/\n---\n\nContent';
+    expect(
+      jekyllUrlForFile(BASE, REPO, `${REPO}/_posts/2025-02-01-some-post.html`, content)
+    ).toBe(`${BASE}/my/custom/path/`);
+  });
+
+  it('uses front matter permalink for regular HTML pages', () => {
+    const content = '---\npermalink: /custom/\n---\n<h1>Hello</h1>';
+    expect(
+      jekyllUrlForFile(BASE, REPO, `${REPO}/page.html`, content)
+    ).toBe(`${BASE}/custom/`);
   });
 });

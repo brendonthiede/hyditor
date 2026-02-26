@@ -9,10 +9,13 @@
   import { parseFrontmatter } from '$lib/utils/frontmatter';
   import { renderMarkdown } from '$lib/utils/markdown';
   import { jekyllUrlForFile } from '$lib/utils/jekyll';
+  import { isHtmlPath } from '$lib/utils/errors';
   import { PREVIEW_POPUP_LABEL, emitToPreviewPopup } from '$lib/tauri/window';
 
   $: parsed = parseFrontmatter($editorState.currentContent);
-  $: rendered = renderMarkdown(parsed.content);
+  $: isHtml = isHtmlPath($editorState.currentFile ?? '');
+  // For HTML files the body is already HTML — skip the markdown pipeline.
+  $: rendered = isHtml ? parsed.content : renderMarkdown(parsed.content);
   $: frontmatterEntries = Object.entries(parsed.data);
 
   // Derive the iframe URL directly from editor + preview state with no store
