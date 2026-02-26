@@ -1,4 +1,4 @@
-use git2::{IndexAddOption, Repository, Signature};
+use git2::{build::CheckoutBuilder, IndexAddOption, Repository, Signature};
 use crate::git::status::is_whitespace_only_diff;
 
 #[tauri::command]
@@ -103,6 +103,81 @@ pub fn git_commit(repo_path: String, message: String) -> Result<String, String> 
     };
 
     Ok(commit_id.to_string())
+}
+
+/// Revert (discard) working-tree changes for the given files.
+/// For tracked files this checks out the HEAD version; for untracked files it
+/// removes them from disk.
+#[tauri::command]
+pub fn git_revert_files(repo_path: String, files: Vec<String>) -> Result<(), String> {
+    if files.is_empty() {
+        return Ok(());
+    }
+
+    let repo = Repository::open(&repo_path).map_err(|e| format!("failed to open repo: {e}"))?;
+
+    // Separate tracked (modified/deleted) from untracked (new) files.
+    let mut tracked: Vec<&str> = Vec::new();
+    let mut untracked: Vec<&str> = Vec::new();
+
+    let statuses = {
+        let mut opts = git2::StatusOptions::new();
+        opts.include_untracked(true)
+            .recurse_untracked_dirs(true);
+        repo.statuses(Some(&mut opts))
+            .map_err(|e| format!("failed to read status: {e}"))?
+    };
+
+    let untracked_set: std::collections::HashSet<String> = statuses
+        .iter()
+        .filter(|entry| entry.status().is_wt_new())
+        .filter_map(|entry| entry.path().map(String::from))
+        .collect();
+
+    for file in &files {
+        if untracked_set.contains(file.as_str()) {
+            untracked.push(file);
+        } else {
+            tracked.push(file);
+        }
+    }
+
+    // For tracked files: checkout from HEAD to restore them.
+    if !tracked.is_empty() {
+        let head = repo.head().map_err(|e| format!("failed to read HEAD: {e}"))?;
+        let head_commit = head
+            .peel(git2::ObjectType::Commit)
+            .map_err(|e| format!("failed to peel HEAD: {e}"))?;
+
+        let mut checkout = CheckoutBuilder::new();
+        checkout.force();
+        for path in &tracked {
+            checkout.path(*path);
+        }
+
+        repo.checkout_tree(&head_commit, Some(&mut checkout))
+            .map_err(|e| format!("failed to revert files: {e}"))?;
+
+        // Also reset the index for these files so they appear clean.
+        let mut index = repo.index().map_err(|e| format!("failed to open index: {e}"))?;
+        repo.reset_default(Some(&head_commit), tracked.iter())
+            .map_err(|e| format!("failed to reset index: {e}"))?;
+        index.write().map_err(|e| format!("failed to write index: {e}"))?;
+    }
+
+    // For untracked files: remove them from disk.
+    for path in &untracked {
+        let full_path = std::path::Path::new(&repo_path).join(path);
+        if full_path.is_file() {
+            std::fs::remove_file(&full_path)
+                .map_err(|e| format!("failed to remove {path}: {e}"))?;
+        } else if full_path.is_dir() {
+            std::fs::remove_dir_all(&full_path)
+                .map_err(|e| format!("failed to remove {path}: {e}"))?;
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

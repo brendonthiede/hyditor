@@ -7,6 +7,7 @@ import {
   commit,
   listBranches,
   push,
+  revertFiles,
   stage,
   status,
   switchBranch,
@@ -375,6 +376,17 @@ export async function pushChanges(): Promise<void> {
     await push(repoPath);
   });
 }
+
+export async function revertChanges(files: string[]): Promise<void> {
+  if (files.length === 0) {
+    return;
+  }
+
+  await runGitAction(`Reverted ${files.length} file(s).`, async (repoPath) => {
+    await revertFiles(repoPath, files);
+  });
+}
+
 export async function restoreLastSession(): Promise<boolean> {
   try {
     const session = await loadLastSession();

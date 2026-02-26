@@ -21,8 +21,7 @@
   let restoringSession = false;
 
   $: authenticated = $authState.status === 'authenticated';
-  $: stagedCount = $gitState.entries.filter((entry) => entry.staged).length;
-  $: unstagedCount = $gitState.entries.filter((entry) => entry.unstaged || entry.untracked).length;
+  $: changedCount = $gitState.entries.filter((entry) => !entry.whitespace_only).length;
 
   // Reactive flex-grow style for the editor pane inside the center area
   $: editorPaneStyle = $layout.previewCollapsed
@@ -124,7 +123,7 @@
       <div class="title-group">
         <h1>Hyditor</h1>
         <button class="git-badge" on:click={focusGitPanel}>
-          Git: {stagedCount} staged / {unstagedCount} unstaged
+          {changedCount} changed file{changedCount === 1 ? '' : 's'}
         </button>
       </div>
       <div class="toolbar-actions">
