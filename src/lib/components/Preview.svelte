@@ -2,6 +2,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { listen } from '@tauri-apps/api/event';
   import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
+  import { openUrl } from '@tauri-apps/plugin-opener';
   import ViewportToolbar from '$lib/components/ViewportToolbar.svelte';
   import { editorState } from '$lib/stores/editor';
   import { previewState, stopJekyllPreview } from '$lib/stores/preview';
@@ -11,6 +12,34 @@
   import { jekyllUrlForFile } from '$lib/utils/jekyll';
   import { isHtmlPath } from '$lib/utils/errors';
   import { PREVIEW_POPUP_LABEL, emitToPreviewPopup } from '$lib/tauri/window';
+
+  /** Split an error message into text and URL segments for rendering. */
+  type ErrorSegment = { kind: 'text'; value: string } | { kind: 'url'; value: string };
+  function parseErrorSegments(message: string): ErrorSegment[] {
+    const urlPattern = /https?:\/\/[^\s)>\]]+/g;
+    const segments: ErrorSegment[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = urlPattern.exec(message)) !== null) {
+      if (match.index > lastIndex) {
+        segments.push({ kind: 'text', value: message.slice(lastIndex, match.index) });
+      }
+      segments.push({ kind: 'url', value: match[0] });
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < message.length) {
+      segments.push({ kind: 'text', value: message.slice(lastIndex) });
+    }
+    return segments;
+  }
+
+  $: errorSegments = $previewState.error ? parseErrorSegments($previewState.error) : [];
+
+  function handleLinkClick(url: string): void {
+    openUrl(url).catch(() => {
+      // Fallback: the URL is still visible, the user can copy it manually.
+    });
+  }
 
   $: parsed = parseFrontmatter($editorState.currentContent);
   $: isHtml = isHtmlPath($editorState.currentFile ?? '');
@@ -111,7 +140,15 @@
 <section class="preview" class:fullscreen={$layout.previewFullscreen}>
   <ViewportToolbar />
   {#if $previewState.error}
-    <p class="error">{$previewState.error}</p>
+    <div class="error">
+      {#each errorSegments as segment}
+        {#if segment.kind === 'url'}
+          <a href={segment.value} on:click|preventDefault={() => handleLinkClick(segment.value)}>{segment.value}</a>
+        {:else}
+          {segment.value}
+        {/if}
+      {/each}
+    </div>
   {/if}
   <div class="preview-canvas">
     <div
@@ -160,6 +197,14 @@
     padding: 0.5rem 0.75rem;
     border-bottom: 1px solid #30363d;
     color: #f85149;
+    white-space: pre-line;
+    font-size: 0.85rem;
+  }
+
+  .error a {
+    color: #58a6ff;
+    text-decoration: underline;
+    cursor: pointer;
   }
 
   .preview-canvas {

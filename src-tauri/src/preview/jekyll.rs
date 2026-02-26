@@ -10,6 +10,17 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 const PREVIEW_HOST: &str = "127.0.0.1";
 const PREVIEW_BOOT_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// URL to the Jekyll prerequisites guide in the project README.
+const JEKYLL_SETUP_GUIDE: &str =
+    "https://github.com/brendonthiede/hyditor/blob/main/docs/jekyll-prerequisites.md";
+
+/// Build a user-facing error message that includes a link to the setup guide.
+fn jekyll_setup_error(detail: &str) -> String {
+    format!(
+        "{detail}\n\nFor setup instructions, see: {JEKYLL_SETUP_GUIDE}"
+    )
+}
+
 /// Find a free TCP port by binding to port 0 and letting the OS assign one.
 fn find_free_port() -> Result<u16, String> {
     let listener = TcpListener::bind("127.0.0.1:0")
@@ -48,11 +59,11 @@ fn wait_for_preview_ready(child: &mut Child, port: u16) -> Result<(), String> {
     while start.elapsed() < PREVIEW_BOOT_TIMEOUT {
         match child.try_wait() {
             Ok(Some(status)) => {
-                return Err(format!(
+                return Err(jekyll_setup_error(&format!(
                     "Jekyll process exited unexpectedly (status: {status}). \
                      Check that all required gems are installed (`bundle install`) \
                      and that Jekyll can build your site."
-                ));
+                )));
             }
             Ok(None) => {}
             Err(err) => {
@@ -81,8 +92,12 @@ fn kill_process(child: &mut Child) -> io::Result<()> {
 
 
 fn shell_command_exists(name: &str) -> bool {
+    // Run the command with --version instead of just checking if the shim/binary
+    // exists.  Version managers like rbenv install shims that are always on PATH
+    // but exit non-zero when the required Ruby version is not installed.  Using
+    // `--version` catches that case.
     Command::new("bash")
-        .args(["-l", "-c", &format!("command -v {name} >/dev/null 2>&1")])
+        .args(["-l", "-c", &format!("{name} --version >/dev/null 2>&1")])
         .status()
         .map(|status| status.success())
         .unwrap_or(false)
@@ -90,34 +105,60 @@ fn shell_command_exists(name: &str) -> bool {
 
 fn bundle_install(repo_path: &Path) -> Result<(), String> {
     log_preview("running bundle install");
-    let status = Command::new("bash")
+    let output = Command::new("bash")
         .args(["-l", "-c", "bundle install"])
         .current_dir(repo_path)
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .map_err(|err| format!("failed to run bundle install: {err}"))?;
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|err| jekyll_setup_error(&format!("Failed to run `bundle install`: {err}")))?;
 
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!(
-            "bundle install failed (status: {status}). \
-             Check your Gemfile and Ruby installation."
-        ))
+    if output.status.success() {
+        return Ok(());
     }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{stdout}{stderr}");
+
+    // Print captured output so it appears in the dev terminal for debugging.
+    if !stderr.is_empty() {
+        eprint!("{stderr}");
+    }
+
+    // Detect version-manager "command not found" patterns (rbenv, rvm, asdf, etc.)
+    if combined.contains("command not found") {
+        return Err(jekyll_setup_error(
+            "Bundler is not available for the current Ruby version. \
+             Ensure the correct Ruby version is installed and that `gem install bundler` \
+             has been run."
+        ));
+    }
+
+    Err(jekyll_setup_error(&format!(
+        "`bundle install` failed (exit {}).\n{}",
+        output.status,
+        stderr.trim()
+    )))
 }
 
 fn start_jekyll_process(repo_path: &Path, port: u16) -> Result<Child, String> {
     let gemfile_exists = repo_path.join("Gemfile").exists();
-    let use_bundle = gemfile_exists && shell_command_exists("bundle");
+    let has_bundle = shell_command_exists("bundle");
+    let use_bundle = gemfile_exists && has_bundle;
     let has_jekyll = shell_command_exists("jekyll");
 
     if !use_bundle && !has_jekyll {
-        return Err(
-            "Jekyll is not installed. Install Ruby/Jekyll (or Bundler with a Gemfile) to use Full Preview."
-                .to_string(),
-        );
+        // Neither bundle nor jekyll is usable — give targeted guidance.
+        let detail = if gemfile_exists && !has_bundle {
+            "This repository has a Gemfile but Bundler is not installed (or the \
+             required Ruby version is not active). Install Ruby and run \
+             `gem install bundler` to enable Full Preview."
+        } else {
+            "Jekyll is not installed. Install Ruby and Jekyll (or Bundler with \
+             a Gemfile) to use Full Preview."
+        };
+        return Err(jekyll_setup_error(detail));
     }
 
     if use_bundle {
@@ -142,7 +183,7 @@ fn start_jekyll_process(repo_path: &Path, port: u16) -> Result<Child, String> {
         .stdout(Stdio::null())
         .stderr(Stdio::inherit())
         .spawn()
-        .map_err(|err| format!("failed to launch Jekyll preview process: {err}"))
+        .map_err(|err| jekyll_setup_error(&format!("Failed to launch Jekyll preview process: {err}")))
 }
 
 #[tauri::command]

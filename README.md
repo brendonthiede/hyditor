@@ -89,6 +89,12 @@ If `Sign in with GitHub` reports client ID not configured, the `DEFAULT_CLIENT_I
 
 To use a different client ID for local development without changing the committed default, copy `.env.example` to `.env` and set `HYDITOR_GITHUB_CLIENT_ID`; `npm run tauri:dev` loads `.env` automatically.
 
+## Jekyll Prerequisites
+
+Hyditor's **Full Preview** mode runs Jekyll locally to render your site. Ruby, Bundler, and Jekyll must be installed and available in your shell. If they are missing, the preview panel will show an error with a link to the setup guide.
+
+**→ [Jekyll Prerequisites — full setup instructions](docs/jekyll-prerequisites.md)**
+
 ## Developing over SSH (Windows)
 
 Tauri requires a display server. When connecting from Windows via SSH, a forwarded X11 display is needed. The following setup was tested with Windows Terminal + VS Code Remote SSH connecting to a Linux (Mint) dev machine.
@@ -241,6 +247,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ Preview viewport active indicator: the currently selected viewport preset button (Desktop / Tablet / Mobile) is highlighted with the active style so users can see which size is selected at a glance
 - ✅ Jekyll preview file navigation: the preview iframe is wrapped in a `{#key}` block so clicking a different file in the file tree always navigates to the correct post/draft page — fixes a regression where the iframe `src` attribute update did not trigger navigation in WebKit
 - ✅ Simplified BranchSelector: removed "Create Branch" input/button and "Refresh" button; the component now contains only the branch dropdown; `create_branch` Tauri command, `createBranch` IPC wrapper, and `createRepoBranch` store function removed from codebase
+- ✅ Jekyll prerequisite detection: when `bundle` or `jekyll` commands are missing or not functional (e.g. rbenv shim without the required Ruby version), the preview panel shows a clear error message with a link to the Jekyll Prerequisites setup guide in the README; `shell_command_exists` now runs `--version` instead of `command -v` to detect version-manager shim failures; `bundle install` stderr is captured and surfaced; error URLs in the preview panel are rendered as clickable links that open in the system browser
 
 ## Contributor Workflow
 
