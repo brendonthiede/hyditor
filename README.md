@@ -21,12 +21,23 @@ Pre-built binaries for Linux, Windows, and macOS are attached to every [GitHub R
 
 ## Status
 
-This repository currently contains the **Phase 1 foundation scaffold**:
+This repository contains the **Phase 1 foundation** plus ongoing **Phase 2 simplification** work:
 
 - Tauri v2 backend structure in `src-tauri/`
 - SvelteKit + TypeScript frontend structure in `src/`
-- Initial IPC command contracts for auth, repos, git, preview, and scoped filesystem
-- Baseline app layout (auth/repo/editor/preview/git panel placeholders)
+- Full IPC command contracts for auth, repos, git, preview, and scoped filesystem
+- Complete app layout with auth, repo selection, editor, preview, and publish workflow
+
+## Publish Workflow (current direction)
+
+Hyditor targets users who want a simple editing experience for Jekyll sites. The publish workflow is intentionally streamlined:
+
+- **No staging/unstaging** — all changed files are shown in a flat list in the Publish panel
+- **No pull requests or branch creation from the UI** — users who need PR flows handle them through GitHub directly
+- **One-click publish** — a single "Publish" button stages eligible files, commits (with optional change notes or an auto-generated message), and pushes in one action
+- **Per-file control** — each changed file can be individually reverted (with confirmation) or excluded from publishing via a ⛔ "Do not publish" toggle
+- **Auto-refresh** — the Publish panel refreshes git status automatically on open (no manual Refresh button)
+- **Branch switching** — users can switch branches via a dropdown; the last-used branch per repo is persisted and restored on next open
 
 ## Quick Start
 
@@ -197,8 +208,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ Responsive viewport simulation (Desktop/Tablet/Mobile presets)
 - ✅ Debounced editor autosave to scoped filesystem
 - ✅ Git status, staging, commit, and push UI with file selectors
-- ✅ Branch management UI (list/switch/create) with local checkout refresh
-- ✅ Pull request workflow UI (list/create) backed by GitHub API commands
+- ✅ Branch switching UI (list/switch) with local checkout refresh
 - ✅ FrontMatterForm structured editor with add/edit/remove field workflow (Phase 3)
 - ✅ Security hardening: explicit local sign-out + revocation guidance UX for refresh-token invalidation edge cases
 - ✅ Security hardening: proactive expired-token detection in GitHub/repo workflows with guided re-auth prompts
@@ -334,5 +344,19 @@ Generated outputs:
 For in-app UI use (e.g. the auth screen), place SVG or PNG assets under `src/lib/assets/` and import them directly in Svelte components.
 
 ## Next Work
+
+### Simplified Publish Workflow (in progress)
+
+The current stage/unstage/commit/push workflow is being replaced with a streamlined "Publish" flow:
+
+1. **Remove PRDialog component** — delete `PRDialog.svelte` and all references; remove `create_pr`, `list_prs` Tauri commands and `pull_request.rs` backend module
+2. **Simplify BranchSelector** — remove "Create Branch" input/button and "Refresh" button; keep only the branch dropdown; remove `create_branch` Tauri command from backend
+3. **Redesign GitPanel** — replace staged/unstaged sections with a flat changed-files list; each file has "Revert" (with confirmation dialog) and ⛔ "Do not publish" toggle; auto-refresh git status on panel mount (replaces manual Refresh button)
+4. **Single Publish action** — replace separate Commit/Push buttons with one "Publish" button that stages eligible files → commits (with optional "Change notes" or auto-generated message `"Changes made using Hyditor on M/D/YYYY"`) → pushes
+5. **Add `git_discard_file` backend command** — new Rust command to revert individual files (checkout from HEAD for tracked files, delete for untracked files)
+6. **Persist current branch per-repo** — rename `default_branch` to `last_branch` in session; save on branch switch and file open; restore on session reload with graceful fallback if branch no longer exists
+7. **Remove dead code** — `git_unstage` command, `pullRequestState`/`branchUiState` stores, `createRepoBranch`/`refreshPullRequests`/`createRepoPullRequest` store functions, `unstage`/`createBranch` Tauri wrappers
+
+### Future
 
 - Define next roadmap item

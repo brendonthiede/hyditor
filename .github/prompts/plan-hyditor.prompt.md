@@ -4,7 +4,7 @@
 
 ## TL;DR
 
-Hyditor is a **Tauri v2** desktop application (Rust backend + SvelteKit frontend) that lets users clone, edit, preview, and push Jekyll sites hosted on GitHub Pages. It provides a **CodeMirror 6** editor with YAML front matter support, a **hybrid preview** system (instant client-side Markdown rendering + full local Jekyll builds), and **responsive viewport simulation** for desktop/tablet/mobile. Authentication uses the **GitHub App Device Flow** for maximum security — no secrets embedded in the binary, fine-grained per-repo permissions, and short-lived tokens stored in the OS keychain via `tauri-plugin-stronghold`. Changes are committed via **git2** (Rust libgit2 binding, no subprocess spawning) and can be pushed directly to `main` or through a Pull Request created via the GitHub API.
+Hyditor is a **Tauri v2** desktop application (Rust backend + SvelteKit frontend) that lets users clone, edit, preview, and push Jekyll sites hosted on GitHub Pages. It provides a **CodeMirror 6** editor with YAML front matter support, a **hybrid preview** system (instant client-side Markdown rendering + full local Jekyll builds), and **responsive viewport simulation** for desktop/tablet/mobile. Authentication uses the **GitHub App Device Flow** for maximum security — no secrets embedded in the binary, fine-grained per-repo permissions, and short-lived tokens stored in the OS keychain via `tauri-plugin-stronghold`. Changes are committed and pushed via **git2** (Rust libgit2 binding, no subprocess spawning) using a streamlined one-click "Publish" workflow. Users who need PR flows or feature branches handle them through GitHub directly.
 
 **License:** GPLv3 (already committed)
 **Target platforms:** Linux, macOS, Windows
@@ -19,7 +19,7 @@ Hyditor is a **Tauri v2** desktop application (Rust backend + SvelteKit frontend
 │  ┌───────────────────────────────────────────┐   │
 │  │           SvelteKit Frontend              │   │
 │  │  ┌──────────┐ ┌───────────┐ ┌──────────┐  │   │
-│  │  │CodeMirror│ │ Preview   │ │  Git/PR  │  │   │
+│  │  │CodeMirror│ │ Preview   │ │ Publish  │  │   │
 │  │  │ Editor   │ │ Viewport  │ │  Panel   │  │   │
 │  │  └────┬─────┘ └─────┬─────┘ └────┬─────┘  │   │
 │  │       │ IPC         │ IPC        │ IPC    │   │
@@ -45,7 +45,7 @@ Hyditor is a **Tauri v2** desktop application (Rust backend + SvelteKit frontend
 | **Frontend** | SvelteKit + TypeScript | UI rendering, editor, preview viewport, state management |
 | **Code editor** | CodeMirror 6 | Markdown/YAML/Liquid editing with syntax highlighting |
 | **Git operations** | `git2` crate (Rust) | Clone, stage, commit, branch, push, pull — no shell subprocess |
-| **GitHub API** | `octocrab` crate (Rust) | Create PRs, list repos, check statuses, manage branches |
+| **GitHub API** | `octocrab` crate (Rust) | List repos, check statuses |
 | **Auth** | GitHub App Device Flow | OAuth token acquisition, refresh, and revocation |
 | **Token storage** | `tauri-plugin-stronghold` | Encrypted credential vault backed by OS keychain |
 | **Instant preview** | `remark` + `rehype` + `gray-matter` (JS) | Client-side Markdown/front matter rendering |
@@ -199,36 +199,37 @@ Security is the top priority. Every design decision is evaluated through this le
   - "Push to main" button with confirmation dialog
   - Clear status indicators: staged, unstaged, pushed
 
-### Phase 2: Pull Request Workflow & Full Preview
+### Phase 2: Simplified Publish Workflow & Full Preview
 
-> Goal: Create PRs, branch management, and full Jekyll preview.
+> Goal: Streamlined one-click publish, branch persistence, and full Jekyll preview.
 
-**Step 7: Branch management**
-- Implement Rust command `git::create_branch(repo_path, branch_name)`:
-  - Create new branch from current HEAD
-  - Checkout the new branch
-  - Branch name auto-suggested from post title or change description
-- Implement Rust command `git::list_branches(repo_path)`:
-  - List local and remote branches
-- Implement Rust command `git::switch_branch(repo_path, branch_name)`:
-  - Checkout existing branch, stash uncommitted changes if needed
-- Frontend: Branch selector dropdown in the toolbar
-  - "New Branch" button for PR workflow
-  - Visual indicator of current branch
+**Step 7: Simplified publish panel**
+- Remove the separate staged/unstaged file sections from GitPanel
+- Show all changed files in a flat list with per-file controls:
+  - "Revert" button with confirmation dialog — calls new `git_discard_file` Rust command
+  - ⛔ "Do not publish" toggle — local UI state (`Set<string>`), not git staging
+- Replace the commit message textarea with "Change notes (optional)"
+- Replace separate Commit + Push buttons with a single "Publish" button that:
+  - Stages all files not marked ⛔
+  - Commits with user's change notes or auto-generated message: "Changes made using Hyditor on M/D/YYYY"
+  - Pushes to the current branch immediately
+- Auto-refresh git status on panel mount (no manual Refresh button)
+- Implement Rust command `git::discard_file(repo_path, file_path)`:
+  - For tracked files: `reset_default` + `checkout_head` with `CheckoutBuilder::path().force()`
+  - For untracked files: `std::fs::remove_file()`
 
-**Step 8: Pull Request creation**
-- Implement Rust command `github::create_pr(token, owner, repo, head, base, title, body)`:
-  - Use `octocrab` to create PR via GitHub API
-  - Auto-fill title from commit message or branch name
-  - Auto-fill body with summary of changes (files modified, posts added/edited)
-- Implement Rust command `github::list_prs(token, owner, repo)`:
-  - List open PRs for the repo
-  - Show status checks, review status
-- Frontend: PR creation dialog
-  - Pre-filled title and description
-  - Base branch selector (defaults to repo's default branch)
-  - "Create PR" button → opens PR in browser after creation
-  - Option to push directly to main with confirmation ("Are you sure? This will publish immediately.")
+**Step 8: Branch persistence & cleanup**
+- Rename `default_branch` to `last_branch` in `LastSession` struct (Rust + TypeScript)
+- Save current branch on: branch switch, file open, repo select
+- Restore last-used branch on session reload via `switchBranch()`
+- Graceful fallback to default branch if the persisted branch no longer exists
+- Remove PR & branch creation UI:
+  - Delete `PRDialog.svelte` component and all references from `+page.svelte`
+  - Simplify `BranchSelector.svelte`: keep only the branch `<select>` dropdown
+  - Remove Rust backend: `pull_request.rs`, `create_branch` function, `git_unstage` command
+  - Remove frontend: `pullRequestState`, `branchUiState` stores, `createRepoBranch`, PR-related store functions
+  - Remove Tauri wrappers: `unstage()`, `createBranch()`, `listPullRequests()`, `createPullRequest()`
+  - Clean up toolbar: remove git badge staged/unstaged distinction; show total changed file count instead
 
 **Step 9: Full Jekyll preview**
 - Implement Rust command `preview::start_jekyll(repo_path)`:
@@ -328,13 +329,13 @@ hyditor/
 │   │   │   ├── mod.rs
 │   │   │   ├── clone.rs          # Repo cloning via git2
 │   │   │   ├── commit.rs         # Staging & committing
-│   │   │   ├── branch.rs         # Branch management
+│   │   │   ├── branch.rs         # Branch list & switch
 │   │   │   ├── push.rs           # Push with HTTPS token auth
+│   │   │   ├── revert.rs         # Discard file changes (revert tracked / delete untracked)
 │   │   │   └── status.rs         # Working directory status & diffs
 │   │   ├── github/
 │   │   │   ├── mod.rs
-│   │   │   ├── repos.rs          # List repos, check Pages status
-│   │   │   └── pull_request.rs   # Create & list PRs
+│   │   │   └── repos.rs          # List repos, check Pages status
 │   │   ├── preview/
 │   │   │   ├── mod.rs
 │   │   │   └── jekyll.rs         # Jekyll subprocess management
@@ -350,9 +351,8 @@ hyditor/
 │   │   │   ├── Editor.svelte         # CodeMirror 6 wrapper
 │   │   │   ├── Preview.svelte        # Markdown preview + iframe
 │   │   │   ├── FileTree.svelte       # Sidebar file browser
-│   │   │   ├── GitPanel.svelte       # Status, staging, commit, push
-│   │   │   ├── BranchSelector.svelte # Branch picker
-│   │   │   ├── PRDialog.svelte       # Pull request creation
+│   │   │   ├── GitPanel.svelte       # Changed files list, revert, publish
+│   │   │   ├── BranchSelector.svelte # Branch switcher (dropdown only)
 │   │   │   ├── FrontMatterForm.svelte# Structured front matter editor
 │   │   │   ├── ViewportToolbar.svelte# Desktop/tablet/mobile presets
 │   │   │   ├── AuthScreen.svelte     # Device flow sign-in
@@ -470,7 +470,7 @@ frame-src 'self' http://127.0.0.1:*;
 | **Callback URL** | Not needed (device flow) |
 | **Setup URL** | Optional: link to README |
 | **Webhook** | Disabled (not needed) |
-| **Permissions** | Repository: Contents (R/W), Pull Requests (R/W), Metadata (R) |
+| **Permissions** | Repository: Contents (R/W), Metadata (R) |
 | **Where can this app be installed?** | Any account |
 | **Enable Device Flow** | Yes |
 
@@ -496,8 +496,13 @@ The `client_id` from the registered app is embedded in the binary. This is safe 
 - [ ] Edit front matter via form, verify it syncs to YAML
 - [ ] Switch between Desktop/Tablet/Mobile viewport presets
 - [ ] Run full Jekyll preview, verify it matches GitHub Pages output
-- [ ] Commit changes directly to main, push, verify on GitHub
-- [ ] Create a new branch, commit, create PR, verify PR appears on GitHub
+- [ ] Publish changed files with change notes, verify commit + push on GitHub
+- [ ] Publish with no change notes, verify auto-generated message format
+- [ ] Mark files as "Do not publish", verify they are excluded from the commit
+- [ ] Revert a modified file, confirm dialog appears, verify file restored
+- [ ] Revert an untracked file, verify file is deleted
+- [ ] Switch branches, close app, reopen, verify last branch is restored
+- [ ] Persist branch that gets deleted remotely, verify graceful fallback to default
 - [ ] Handle push conflict (someone else pushed first)
 - [ ] Sign out, verify tokens are revoked and cleared
 - [ ] Edit while offline, push when back online
@@ -532,6 +537,7 @@ The `client_id` from the registered app is embedded in the binary. This is safe 
 | Token storage | tauri-plugin-stronghold | keytar, plaintext | Encrypted vault (XChaCha20-Poly1305), purpose-built for Tauri |
 | Preview | Hybrid (client-side + Jekyll) | Jekyll only, client-side only | Fast feedback during editing + exact fidelity on demand |
 | Target OS | All three (Linux, macOS, Windows) | Linux first | Tauri natively supports all three; WebView differences are manageable |
+| Publish workflow | One-click Publish (stage+commit+push) | Stage/unstage/commit/push separately | Target users want simple editing; advanced git users can use GitHub directly |
 
 ---
 
