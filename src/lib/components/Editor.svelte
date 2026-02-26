@@ -5,6 +5,38 @@
   import { markdown } from '@codemirror/lang-markdown';
   import { yaml } from '@codemirror/lang-yaml';
   import { html } from '@codemirror/lang-html';
+  import { oneDark } from '@codemirror/theme-one-dark';
+  import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+  import { tags } from '@lezer/highlight';
+
+  /**
+   * Custom highlight overrides that improve visibility of markdown
+   * punctuation on the dark background (#0d1117).
+   */
+  const markdownHighlight = HighlightStyle.define([
+    // Heading markers (#, ##, etc.) and the heading text
+    { tag: tags.heading, color: '#79c0ff', fontWeight: 'bold' },
+    { tag: tags.processingInstruction, color: '#79c0ff' },   // ATX # marks
+    // Code-fence markers (```) and inline code
+    { tag: tags.monospace, color: '#7ee787' },
+    // Emphasis / strong
+    { tag: tags.emphasis, color: '#d2a8ff', fontStyle: 'italic' },
+    { tag: tags.strong, color: '#d2a8ff', fontWeight: 'bold' },
+    // Links & URLs
+    { tag: tags.link, color: '#58a6ff', textDecoration: 'underline' },
+    { tag: tags.url, color: '#58a6ff' },
+    // Block-quote markers
+    { tag: tags.quote, color: '#8b949e' },
+    // List markers (-, *, 1.)
+    { tag: tags.list, color: '#f0883e' },
+    // Content meta / front-matter delimiters
+    { tag: tags.contentSeparator, color: '#8b949e' },
+    // HTML tags embedded in markdown
+    { tag: tags.angleBracket, color: '#8b949e' },
+    { tag: tags.tagName, color: '#7ee787' },
+    { tag: tags.attributeName, color: '#79c0ff' },
+    { tag: tags.attributeValue, color: '#a5d6ff' },
+  ]);
   import FrontMatterForm from '$lib/components/FrontMatterForm.svelte';
   import {
     editorState,
@@ -48,6 +80,8 @@
         doc: currentContent,
         extensions: [
           basicSetup,
+          oneDark,
+          syntaxHighlighting(markdownHighlight),
           EditorView.lineWrapping,
           languageCompartment.of(languageForPath(currentFile)),
           EditorView.updateListener.of((update) => {

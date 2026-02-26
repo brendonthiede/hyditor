@@ -124,8 +124,9 @@ fn start_jekyll_process(repo_path: &Path, port: u16) -> Result<Child, String> {
         bundle_install(repo_path)?;
     }
 
+    let livereload_port = find_free_port()?;
     let jekyll_args = format!(
-        "serve --host {PREVIEW_HOST} --port {port} --baseurl \"\" --drafts --livereload"
+        "serve --host {PREVIEW_HOST} --port {port} --baseurl \"\" --drafts --livereload --livereload-port {livereload_port}"
     );
     let shell_cmd = if use_bundle {
         format!("bundle exec jekyll {jekyll_args}")

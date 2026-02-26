@@ -52,7 +52,7 @@
     newValue = '';
   }
 
-  let isCollapsed = false;
+  let isCollapsed = true;
 </script>
 
 <section class="frontmatter-form">
