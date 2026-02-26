@@ -123,4 +123,36 @@ describe('jekyllUrlForFile', () => {
   it('returns baseUrl when the file is outside the repo', () => {
     expect(jekyllUrlForFile(BASE, REPO, '/some/other/path/page.md')).toBe(BASE);
   });
+
+  // .markdown extension support
+  it('maps a .markdown _posts file to its dated permalink', () => {
+    expect(
+      jekyllUrlForFile(BASE, REPO, `${REPO}/_posts/2024-03-15-hello-world.markdown`)
+    ).toBe(`${BASE}/2024/03/15/hello-world.html`);
+  });
+
+  it('maps a .markdown _drafts file to a dated permalink using today\'s local date', () => {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    expect(
+      jekyllUrlForFile(BASE, REPO, `${REPO}/_drafts/my-draft-post.markdown`)
+    ).toBe(`${BASE}/${y}/${m}/${d}/my-draft-post.html`);
+  });
+
+  it('maps a .markdown top-level page to a pretty URL', () => {
+    expect(jekyllUrlForFile(BASE, REPO, `${REPO}/about.markdown`)).toBe(`${BASE}/about/`);
+  });
+
+  it('maps index.markdown to the root URL', () => {
+    expect(jekyllUrlForFile(BASE, REPO, `${REPO}/index.markdown`)).toBe(`${BASE}/`);
+  });
+
+  it('maps a .markdown _posts file with categories', () => {
+    const content = '---\ncategories: [devops]\n---\n\nContent';
+    expect(
+      jekyllUrlForFile(BASE, REPO, `${REPO}/_posts/2025-02-01-k8s-lab.markdown`, content, 'date')
+    ).toBe(`${BASE}/devops/2025/02/01/k8s-lab.html`);
+  });
 });

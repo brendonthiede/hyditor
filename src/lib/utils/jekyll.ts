@@ -2,6 +2,22 @@ import { parse as parseYaml } from 'yaml';
 
 const BASE_URL = 'http://127.0.0.1:4000';
 
+/** Markdown extensions recognised by Jekyll. */
+const MD_EXTENSIONS = ['.md', '.markdown'];
+
+function isMarkdownFile(path: string): boolean {
+  const lower = path.toLowerCase();
+  return MD_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+/** Strip the markdown extension from the end of a path and return the base. */
+function stripMarkdownExt(path: string): string {
+  for (const ext of MD_EXTENSIONS) {
+    if (path.endsWith(ext)) return path.slice(0, -ext.length);
+  }
+  return path;
+}
+
 // Jekyll's built-in named permalink presets.
 const PERMALINK_PRESETS: Record<string, string> = {
   date: '/:categories/:year/:month/:day/:title:output_ext',
@@ -111,7 +127,7 @@ export function jekyllUrlForFile(
   fileContent: string = '',
   sitePermalink: string = 'date'
 ): string {
-  if (!filePath.endsWith('.md')) {
+  if (!isMarkdownFile(filePath)) {
     return baseUrl;
   }
 
@@ -144,8 +160,8 @@ export function jekyllUrlForFile(
 
   if (!isPost && !isDraft) {
     // Regular pages: not subject to the post permalink template.
-    if (rel === 'index.md') return `${baseUrl}/`;
-    const urlPath = rel.replace(/\.md$/, '/');
+    if (rel === 'index.md' || rel === 'index.markdown') return `${baseUrl}/`;
+    const urlPath = stripMarkdownExt(rel) + '/';
     return `${baseUrl}/${urlPath}`;
   }
 
@@ -153,7 +169,7 @@ export function jekyllUrlForFile(
   let year: string, month: string, day: string, titleSlug: string;
 
   if (isPost) {
-    const postMatch = rel.match(/^_posts\/(\d{4})-(\d{2})-(\d{2})-(.+)\.md$/);
+    const postMatch = rel.match(/^_posts\/(\d{4})-(\d{2})-(\d{2})-(.+)\.(?:md|markdown)$/);
     if (!postMatch) return baseUrl;
     [, year, month, day, titleSlug] = postMatch as [string, string, string, string, string];
   } else {
@@ -162,7 +178,7 @@ export function jekyllUrlForFile(
     year = String(today.getFullYear());
     month = String(today.getMonth() + 1).padStart(2, '0');
     day = String(today.getDate()).padStart(2, '0');
-    const draftMatch = rel.match(/^_drafts\/(.+)\.md$/);
+    const draftMatch = rel.match(/^_drafts\/(.+)\.(?:md|markdown)$/);
     if (!draftMatch) return baseUrl;
     // Strip an optional leading date prefix (YYYY-MM-DD-) so drafts named like
     // posts get the same slug treatment Jekyll applies.

@@ -229,6 +229,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ Repo filter autofocus: when the repository selection screen opens, the filter input is automatically focused so the user can start typing immediately without clicking it first
 - ✅ "Copy repo path" button in the toolbar copies the local cache path of the active repository to the clipboard; the button briefly shows "Path copied!" as feedback, and its tooltip always shows the full path — lets users jump directly to the repo in their preferred code editor or terminal
 - ✅ Preview viewport active indicator: the currently selected viewport preset button (Desktop / Tablet / Mobile) is highlighted with the active style so users can see which size is selected at a glance
+- ✅ Jekyll preview file navigation: the preview iframe is wrapped in a `{#key}` block so clicking a different file in the file tree always navigates to the correct post/draft page — fixes a regression where the iframe `src` attribute update did not trigger navigation in WebKit
 
 ## Contributor Workflow
 
@@ -334,7 +335,6 @@ For in-app UI use (e.g. the auth screen), place SVG or PNG assets under `src/lib
 
 ## Next Work
 
-- Selecting a post in the File tree is no longer loading the post content into the preview panel. This is a regression from the previous implementation and needs to be fixed to restore the expected workflow of clicking a post → see it in the preview. Note that drafts are still working as expected, so the issue is specific to non-draft posts.
 - The file tree filter for jekyll-relevant files should hide _includes, _layouts, and _sass directories. Under the assets folder, the js, css, and scss should be hidden, but everything else should be shown (currently some images are hidden, but they should be shown).
 - Add a mechanism to add images to the editor content and upload them to the repo (e.g. drag-and-drop into the editor, or an "Insert image" button that opens a file picker). This is a common workflow for blog posts and would be a valuable addition to the editor.
 - Define next roadmap item

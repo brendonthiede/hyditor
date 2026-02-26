@@ -92,7 +92,9 @@
       style={`width: ${$previewState.viewport.width}px; height: ${$previewState.viewport.height}px;`}
     >
       {#if $previewState.mode === 'jekyll' && iframeUrl}
-        <iframe title="Jekyll preview" src={iframeUrl}></iframe>
+        {#key iframeUrl}
+          <iframe title="Jekyll preview" src={iframeUrl}></iframe>
+        {/key}
       {:else}
         <article>
           {#if frontmatterEntries.length > 0}
