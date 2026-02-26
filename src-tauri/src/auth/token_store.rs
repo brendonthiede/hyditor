@@ -465,7 +465,13 @@ pub fn sign_out(app: AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::MutexGuard;
     use tempfile::TempDir;
+
+    /// Mutex that serializes integration tests which share the process-global
+    /// `TOKEN_CACHE`.  Without this, parallel test threads race on
+    /// `clear_cached_token` / `set_cached_token` and produce sporadic failures.
+    static INTEGRATION_LOCK: Mutex<()> = Mutex::new(());
 
     /// Pre-populate `KEY_MATERIAL_CACHE` with deterministic test bytes so that
     /// no integration test ever reaches the OS keychain.
@@ -473,13 +479,16 @@ mod tests {
         let _ = KEY_MATERIAL_CACHE.set(vec![42u8; 32]);
     }
 
-    /// Create a fresh temp dir + vault paths and reset global caches.
-    fn setup_integration() -> (TempDir, VaultPaths) {
+    /// Acquire the integration lock, set up key material, and clear the token
+    /// cache.  Returns the lock guard (must be held for the test's lifetime),
+    /// a temp dir, and vault paths.
+    fn setup_integration() -> (MutexGuard<'static, ()>, TempDir, VaultPaths) {
+        let guard = INTEGRATION_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         ensure_test_key_material();
         clear_cached_token();
         let dir = TempDir::new().expect("temp dir should be created");
         let paths = resolve_vault_paths(dir.path());
-        (dir, paths)
+        (guard, dir, paths)
     }
 
     fn temp_paths() -> (TempDir, VaultPaths) {
@@ -545,6 +554,7 @@ mod tests {
 
     #[test]
     fn token_cache_set_get_clear() {
+        let _guard = INTEGRATION_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         clear_cached_token();
 
         assert!(get_cached_token().is_none(), "cache should start empty");
@@ -567,12 +577,13 @@ mod tests {
     // under ~2 s even in debug builds, so the suite runs in CI without
     // needing --ignored.
     //
-    // Run them:
-    //   cargo test auth::token_store -- --test-threads=1
+    // An INTEGRATION_LOCK mutex serializes tests that share the
+    // process-global TOKEN_CACHE so they are safe with any
+    // --test-threads value.
 
     #[test]
     fn open_stronghold_creates_fresh_snapshot() {
-        let (_dir, paths) = setup_integration();
+        let (_guard, _dir, paths) = setup_integration();
 
         assert!(!paths.snapshot_path.exists(), "snapshot should not exist yet");
         let stronghold = open_stronghold(&paths).expect("open should succeed");
@@ -583,7 +594,7 @@ mod tests {
 
     #[test]
     fn set_and_get_stored_token_works() {
-        let (_dir, paths) = setup_integration();
+        let (_guard, _dir, paths) = setup_integration();
 
         let token = sample_token();
         set_token_with_paths(&paths, token.clone()).expect("set should succeed");
@@ -601,7 +612,7 @@ mod tests {
 
     #[test]
     fn sign_out_clears_token() {
-        let (_dir, paths) = setup_integration();
+        let (_guard, _dir, paths) = setup_integration();
 
         let token = StoredToken {
             access_token: "temp_token".to_string(),
@@ -618,7 +629,7 @@ mod tests {
 
     #[test]
     fn get_stored_token_returns_none_when_empty() {
-        let (_dir, paths) = setup_integration();
+        let (_guard, _dir, paths) = setup_integration();
 
         let result = get_stored_token_with_paths(&paths).expect("get should succeed");
         assert!(result.is_none());
@@ -626,7 +637,7 @@ mod tests {
 
     #[test]
     fn cached_read_skips_stronghold() {
-        let (_dir, paths) = setup_integration();
+        let (_guard, _dir, paths) = setup_integration();
 
         let token = sample_token();
         set_token_with_paths(&paths, token).expect("set should succeed");
@@ -651,7 +662,7 @@ mod tests {
 
     #[test]
     fn overwrite_token_updates_cache() {
-        let (_dir, paths) = setup_integration();
+        let (_guard, _dir, paths) = setup_integration();
 
         let first = StoredToken {
             access_token: "first_token".to_string(),
@@ -682,7 +693,7 @@ mod tests {
 
     #[test]
     fn sign_out_then_set_round_trip() {
-        let (_dir, paths) = setup_integration();
+        let (_guard, _dir, paths) = setup_integration();
 
         let token = sample_token();
         set_token_with_paths(&paths, token).expect("set should succeed");
@@ -704,7 +715,7 @@ mod tests {
 
     #[test]
     fn corrupt_snapshot_is_recovered() {
-        let (_dir, paths) = setup_integration();
+        let (_guard, _dir, paths) = setup_integration();
 
         let token = sample_token();
         set_token_with_paths(&paths, token).expect("set should succeed");
@@ -732,7 +743,7 @@ mod tests {
 
     #[test]
     fn load_client_creates_client_on_fresh_stronghold() {
-        let (_dir, paths) = setup_integration();
+        let (_guard, _dir, paths) = setup_integration();
 
         let stronghold = open_stronghold(&paths).expect("open should succeed");
         let client = load_client(&stronghold);
@@ -741,7 +752,7 @@ mod tests {
 
     #[test]
     fn load_client_reuses_existing_client() {
-        let (_dir, paths) = setup_integration();
+        let (_guard, _dir, paths) = setup_integration();
 
         let stronghold = open_stronghold(&paths).expect("open should succeed");
 
@@ -751,7 +762,7 @@ mod tests {
 
     #[test]
     fn get_token_returns_valid_unexpired_token() {
-        let (_dir, paths) = setup_integration();
+        let (_guard, _dir, paths) = setup_integration();
 
         let future_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -774,7 +785,7 @@ mod tests {
 
     #[test]
     fn get_token_returns_none_when_no_token_stored() {
-        let (_dir, paths) = setup_integration();
+        let (_guard, _dir, paths) = setup_integration();
 
         let stored = get_stored_token_with_paths(&paths).expect("get_stored_token should work");
         assert!(stored.is_none());
@@ -782,7 +793,7 @@ mod tests {
 
     #[test]
     fn token_without_expiry_is_returned() {
-        let (_dir, paths) = setup_integration();
+        let (_guard, _dir, paths) = setup_integration();
 
         let token = StoredToken {
             access_token: "no_expiry_token".to_string(),
@@ -801,6 +812,7 @@ mod tests {
 
     #[test]
     fn multiple_vaults_are_independent() {
+        let _guard = INTEGRATION_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         ensure_test_key_material();
         clear_cached_token();
 

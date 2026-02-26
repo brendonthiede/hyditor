@@ -5,7 +5,6 @@
   import Editor from '$lib/components/Editor.svelte';
   import Preview from '$lib/components/Preview.svelte';
   import BranchSelector from '$lib/components/BranchSelector.svelte';
-  import PRDialog from '$lib/components/PRDialog.svelte';
   import PanelResizeHandle from '$lib/components/PanelResizeHandle.svelte';
   import { writeText as writeClipboardText } from '@tauri-apps/plugin-clipboard-manager';
   import { authState, loadAuthState, logOut } from '$lib/stores/auth';
@@ -128,7 +127,6 @@
           {pathCopied ? 'Path copied!' : 'Copy repo path'}
         </button>
         <BranchSelector />
-        <PRDialog />
         <div class="signout-menu">
           <button class="signout-trigger" on:click={() => (showSignOutPanel = !showSignOutPanel)}>
             Sign out

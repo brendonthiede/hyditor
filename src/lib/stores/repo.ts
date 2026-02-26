@@ -1,9 +1,6 @@
 import { get, writable } from 'svelte/store';
 import {
-  createPullRequest,
-  listPullRequests,
-  listRepos,
-  type PullRequestInfo
+  listRepos
 } from '$lib/tauri/github';
 import {
   cloneRepo,
@@ -73,12 +70,7 @@ export const branchUiState = writable<{
   error: string | null;
   lastAction: string | null;
 }>({ busy: false, error: null, lastAction: null });
-export const pullRequestState = writable<{
-  entries: PullRequestInfo[];
-  busy: boolean;
-  error: string | null;
-  lastAction: string | null;
-}>({ entries: [], busy: false, error: null, lastAction: null });
+
 
 // getErrorMessage imported from '$lib/utils/errors'
 
@@ -199,7 +191,6 @@ export async function selectRepo(repo: RepoInfo): Promise<void> {
 
     await refreshGitStatus();
     await refreshBranches();
-    await refreshPullRequests();
     void setPreviewMode('jekyll', localPath);
 
     // Persist selected repo for session restore
@@ -399,82 +390,6 @@ export async function pushChanges(): Promise<void> {
     await push(repoPath);
   });
 }
-
-export async function refreshPullRequests(): Promise<void> {
-  const current = get(activeRepo);
-  if (!current) {
-    pullRequestState.set({ entries: [], busy: false, error: null, lastAction: null });
-    return;
-  }
-
-  pullRequestState.update((state) => ({ ...state, busy: true, error: null }));
-  try {
-    const entries = await listPullRequests(current.owner, current.name);
-    pullRequestState.update((state) => ({
-      ...state,
-      entries,
-      error: null
-    }));
-  } catch (error) {
-    if (handleAuthExpiredError(error)) {
-      return;
-    }
-
-    pullRequestState.update((state) => ({
-      ...state,
-      error: error instanceof Error ? error.message : 'Failed to list pull requests.'
-    }));
-  } finally {
-    pullRequestState.update((state) => ({ ...state, busy: false }));
-  }
-}
-
-export async function createRepoPullRequest(input: {
-  head: string;
-  base: string;
-  title: string;
-  body: string;
-}): Promise<void> {
-  const current = get(activeRepo);
-  if (!current) {
-    return;
-  }
-
-  const title = input.title.trim();
-  if (!title) {
-    pullRequestState.update((state) => ({ ...state, error: 'Pull request title is required.' }));
-    return;
-  }
-
-  const head = input.head.trim();
-  const base = input.base.trim();
-  if (!head || !base) {
-    pullRequestState.update((state) => ({ ...state, error: 'Both head and base branches are required.' }));
-    return;
-  }
-
-  pullRequestState.update((state) => ({ ...state, busy: true, error: null, lastAction: null }));
-  try {
-    const created = await createPullRequest(current.owner, current.name, head, base, title, input.body.trim());
-    pullRequestState.update((state) => ({
-      ...state,
-      entries: [created, ...state.entries.filter((entry) => entry.number !== created.number)],
-      lastAction: `Created PR #${created.number}.`
-    }));
-  } catch (error) {
-    if (handleAuthExpiredError(error)) {
-      return;
-    }
-
-    pullRequestState.update((state) => ({
-      ...state,
-      error: error instanceof Error ? error.message : 'Failed to create pull request.'
-    }));
-  } finally {
-    pullRequestState.update((state) => ({ ...state, busy: false }));
-  }
-}
-
 export async function restoreLastSession(): Promise<boolean> {
   try {
     const session = await loadLastSession();
@@ -506,7 +421,6 @@ export async function restoreLastSession(): Promise<boolean> {
 
       await refreshGitStatus();
       await refreshBranches();
-      await refreshPullRequests();
       void setPreviewMode('jekyll', localPath);
       return true;
     } catch {
@@ -529,7 +443,6 @@ export function resetRepoSession(): void {
   gitState.set({ entries: [], busy: false, error: null, lastAction: null });
   branchState.set({ current: 'main', branches: ['main'] });
   branchUiState.set({ busy: false, error: null, lastAction: null });
-  pullRequestState.set({ entries: [], busy: false, error: null, lastAction: null });
   fileTree.set([]);
   resetEditorState();
   clearLastSession().catch(() => {});

@@ -25,8 +25,6 @@ pub fn run() {
             auth::token_store::get_token,
             auth::token_store::sign_out,
             github::repos::list_repos,
-            github::pull_request::create_pr,
-            github::pull_request::list_prs,
             git::clone::clone_repo,
             git::status::git_status,
             git::status::git_diff_file,

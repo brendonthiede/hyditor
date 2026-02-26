@@ -294,14 +294,7 @@ cd src-tauri && cargo test
 
 Note: Run the Rust tests from the `src-tauri` directory.
 
-Ignored Rust tests:
-
-- All `src-tauri/src/auth/token_store.rs` integration tests run by default (the `[profile.dev.package."*"] opt-level = 2` Cargo profile override keeps Stronghold operations under ~2 s).
-- Run the full Rust suite:
-
-```bash
-cd src-tauri && cargo test -- --test-threads=1
-```
+All `src-tauri/src/auth/token_store.rs` integration tests run by default (the `[profile.dev.package."*"] opt-level = 2` Cargo profile override keeps Stronghold operations under ~2 s). Integration tests that share the process-global `TOKEN_CACHE` are serialized by an `INTEGRATION_LOCK` mutex so they are safe with any `--test-threads` value.
 
 ## Auth Implementation Notes
 
@@ -349,7 +342,7 @@ For in-app UI use (e.g. the auth screen), place SVG or PNG assets under `src/lib
 
 The current stage/unstage/commit/push workflow is being replaced with a streamlined "Publish" flow:
 
-1. **Remove PRDialog component** — delete `PRDialog.svelte` and all references; remove `create_pr`, `list_prs` Tauri commands and `pull_request.rs` backend module
+1. ~~**Remove PRDialog component**~~ ✅ — deleted `PRDialog.svelte` and all references; removed `create_pr`, `list_prs` Tauri commands and `pull_request.rs` backend module
 2. **Simplify BranchSelector** — remove "Create Branch" input/button and "Refresh" button; keep only the branch dropdown; remove `create_branch` Tauri command from backend
 3. **Redesign GitPanel** — replace staged/unstaged sections with a flat changed-files list; each file has "Revert" (with confirmation dialog) and ⛔ "Do not publish" toggle; auto-refresh git status on panel mount (replaces manual Refresh button)
 4. **Single Publish action** — replace separate Commit/Push buttons with one "Publish" button that stages eligible files → commits (with optional "Change notes" or auto-generated message `"Changes made using Hyditor on M/D/YYYY"`) → pushes
