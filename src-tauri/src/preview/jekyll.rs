@@ -85,15 +85,60 @@ fn kill_process(child: &mut Child) -> io::Result<()> {
         return Ok(());
     }
 
-    child.kill()?;
+    // On Windows, `child.kill()` only terminates the immediate process (cmd.exe),
+    // leaving the Jekyll subprocess running.  Use `taskkill /F /T /PID` to kill the
+    // entire process tree.
+    #[cfg(target_os = "windows")]
+    {
+        let pid = child.id();
+        let _ = Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        child.kill()?;
+    }
+
     let _ = child.wait();
     Ok(())
 }
 
 
+/// Run a shell command via the platform-appropriate shell.
+///
+/// On Unix this uses `bash -l -c` so that login-shell profile scripts
+/// (rbenv, rvm, etc.) are sourced.  On Windows this uses `cmd.exe /C`
+/// which inherits the system PATH where RubyInstaller places its binaries.
+fn shell_command(cmd: &str) -> Command {
+    #[cfg(target_os = "windows")]
+    {
+        let mut c = Command::new("cmd.exe");
+        c.args(["/C", cmd]);
+        c
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let mut c = Command::new("bash");
+        c.args(["-l", "-c", cmd]);
+        c
+    }
+}
+
 fn shell_command_exists(name: &str) -> bool {
-    Command::new("bash")
-        .args(["-l", "-c", &format!("command -v {name} >/dev/null 2>&1")])
+    #[cfg(target_os = "windows")]
+    let check_cmd = format!("where {name}");
+
+    #[cfg(not(target_os = "windows"))]
+    let check_cmd = format!("command -v {name} >/dev/null 2>&1");
+
+    shell_command(&check_cmd)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status()
         .map(|status| status.success())
         .unwrap_or(false)
@@ -101,8 +146,7 @@ fn shell_command_exists(name: &str) -> bool {
 
 fn bundle_install(repo_path: &Path) -> Result<(), String> {
     log_preview("running bundle install");
-    let output = Command::new("bash")
-        .args(["-l", "-c", "bundle install"])
+    let output = shell_command("bundle install")
         .current_dir(repo_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -173,8 +217,7 @@ fn start_jekyll_process(repo_path: &Path, port: u16) -> Result<Child, String> {
 
     log_preview(&format!("shell command: {shell_cmd}"));
 
-    Command::new("bash")
-        .args(["-l", "-c", &shell_cmd])
+    shell_command(&shell_cmd)
         .current_dir(repo_path)
         .stdout(Stdio::null())
         .stderr(Stdio::inherit())

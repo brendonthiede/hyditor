@@ -36,7 +36,7 @@ gem install bundler jekyll
 
 Install Ruby via [RubyInstaller](https://rubyinstaller.org/) (the **Ruby+Devkit** variant):
 
-1. Download and run the installer; select "Add Ruby executables to your PATH".
+1. Download and run the installer; select **"Add Ruby executables to your PATH"**.
 2. At the end of the installer, run the `ridk install` step (choose option 3 — MSYS2 + MINGW development toolchain).
 3. Open a new terminal and run:
 
@@ -44,9 +44,15 @@ Install Ruby via [RubyInstaller](https://rubyinstaller.org/) (the **Ruby+Devkit*
 gem install bundler jekyll
 ```
 
+> **Important — system PATH requirement:**  Hyditor is a GUI application (`windows_subsystem = "windows"`) and does not inherit shell profile customizations. Ruby, Bundler, and Jekyll must be on the **system PATH** (the one in **System Properties → Environment Variables → System variables → Path**), not just a user-profile or PowerShell-profile PATH. RubyInstaller adds itself to the system PATH by default when "Add Ruby executables to your PATH" is checked during installation.
+>
+> To verify, open a **new** Command Prompt (`cmd.exe`) — not PowerShell — and run `where ruby`, `where bundle`, and `where jekyll`. If any of those fail, the commands are not on the system PATH and Hyditor will not find them.
+
 ## Verifying the installation
 
-After installing, confirm that both commands are available in a **new** terminal:
+After installing, confirm that all three commands are available in a **new** terminal:
+
+**Linux / macOS (bash):**
 
 ```bash
 ruby --version    # e.g. ruby 3.2.8
@@ -54,7 +60,17 @@ bundle --version  # e.g. Bundler version 2.x
 jekyll --version  # e.g. jekyll 4.x
 ```
 
-If you use a version manager (rbenv, rvm, asdf), ensure the correct Ruby version is active in the directory where Hyditor clones repositories (`~/.cache/hyditor/repos/` by default on Linux).
+**Windows (Command Prompt — not PowerShell):**
+
+```cmd
+where ruby
+where bundle
+where jekyll
+```
+
+Using Command Prompt (`cmd.exe`) for verification is important because Hyditor launches Jekyll via `cmd.exe`, not PowerShell. If the commands are only available in PowerShell (e.g. via a profile script), Hyditor will not find them.
+
+If you use a version manager (rbenv, rvm, asdf) on Linux/macOS, ensure the correct Ruby version is active in the directory where Hyditor clones repositories (`~/.cache/hyditor/repos/` by default on Linux).
 
 ## Per-repository setup
 
