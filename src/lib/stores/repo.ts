@@ -4,16 +4,12 @@ import {
 } from '$lib/tauri/github';
 import {
   cloneRepo,
-  commit,
   listBranches,
   publish,
-  push,
   revertFiles,
-  stage,
   status,
   switchBranch,
-  type GitStatusEntry,
-  unstage
+  type GitStatusEntry
 } from '$lib/tauri/git';
 import { readFile, readTree, writeFile } from '$lib/tauri/fs';
 import { requireReauthentication } from '$lib/stores/auth';
@@ -62,15 +58,19 @@ export const gitState = writable<{
   error: string | null;
   lastAction: string | null;
 }>({ entries: [], busy: false, error: null, lastAction: null });
-export const branchState = writable<{ current: string; branches: string[] }>({
-  current: 'main',
-  branches: ['main']
-});
-export const branchUiState = writable<{
+export const branchState = writable<{
+  current: string;
+  branches: string[];
   busy: boolean;
   error: string | null;
   lastAction: string | null;
-}>({ busy: false, error: null, lastAction: null });
+}>({
+  current: 'main',
+  branches: ['main'],
+  busy: false,
+  error: null,
+  lastAction: null
+});
 
 
 // getErrorMessage imported from '$lib/utils/errors'
@@ -217,12 +217,11 @@ export async function selectRepo(repo: RepoInfo): Promise<void> {
 export async function refreshBranches(): Promise<void> {
   const current = get(activeRepo);
   if (!current) {
-    branchState.set({ current: 'main', branches: ['main'] });
-    branchUiState.set({ busy: false, error: null, lastAction: null });
+    branchState.set({ current: 'main', branches: ['main'], busy: false, error: null, lastAction: null });
     return;
   }
 
-  branchUiState.update((state) => ({ ...state, busy: true, error: null }));
+  branchState.update((state) => ({ ...state, busy: true, error: null }));
   try {
     const branches = await listBranches(current.localPath);
     const sortedBranches = [...branches].sort((left, right) => left.localeCompare(right));
@@ -232,6 +231,7 @@ export async function refreshBranches(): Promise<void> {
     branchState.update((state) => {
       const resolvedCurrent = sortedBranches.includes(state.current) ? state.current : fallbackCurrent;
       return {
+        ...state,
         current: resolvedCurrent,
         branches: sortedBranches
       };
@@ -241,12 +241,12 @@ export async function refreshBranches(): Promise<void> {
       return;
     }
 
-    branchUiState.update((state) => ({
+    branchState.update((state) => ({
       ...state,
       error: getErrorMessage(error) ?? 'Failed to refresh branches.'
     }));
   } finally {
-    branchUiState.update((state) => ({ ...state, busy: false }));
+    branchState.update((state) => ({ ...state, busy: false }));
   }
 }
 
@@ -256,7 +256,7 @@ async function runBranchAction(actionLabel: string, action: (repoPath: string) =
     return;
   }
 
-  branchUiState.update((state) => ({ ...state, busy: true, error: null, lastAction: null }));
+  branchState.update((state) => ({ ...state, busy: true, error: null, lastAction: null }));
   try {
     await action(current.localPath);
     await refreshBranches();
@@ -264,18 +264,18 @@ async function runBranchAction(actionLabel: string, action: (repoPath: string) =
     const tree = await readTree(current.localPath);
     fileTree.set(tree);
     await openFirstContentFile(current.localPath);
-    branchUiState.update((state) => ({ ...state, lastAction: actionLabel }));
+    branchState.update((state) => ({ ...state, lastAction: actionLabel }));
   } catch (error) {
     if (handleAuthExpiredError(error)) {
       return;
     }
 
-    branchUiState.update((state) => ({
+    branchState.update((state) => ({
       ...state,
       error: getErrorMessage(error) ?? `${actionLabel} failed.`
     }));
   } finally {
-    branchUiState.update((state) => ({ ...state, busy: false }));
+    branchState.update((state) => ({ ...state, busy: false }));
   }
 }
 
@@ -347,44 +347,6 @@ async function runGitAction(actionLabel: string, action: (repoPath: string) => P
   } finally {
     gitState.update((state) => ({ ...state, busy: false }));
   }
-}
-
-export async function stageFiles(files: string[]): Promise<void> {
-  if (files.length === 0) {
-    return;
-  }
-
-  await runGitAction('Staged file selection.', async (repoPath) => {
-    await stage(repoPath, files);
-  });
-}
-
-export async function unstageFiles(files: string[]): Promise<void> {
-  if (files.length === 0) {
-    return;
-  }
-
-  await runGitAction('Unstaged file selection.', async (repoPath) => {
-    await unstage(repoPath, files);
-  });
-}
-
-export async function commitChanges(message: string): Promise<void> {
-  const trimmed = message.trim();
-  if (!trimmed) {
-    gitState.update((state) => ({ ...state, error: 'Commit message is required.' }));
-    return;
-  }
-
-  await runGitAction('Committed staged changes.', async (repoPath) => {
-    await commit(repoPath, trimmed);
-  });
-}
-
-export async function pushChanges(): Promise<void> {
-  await runGitAction('Pushed current branch to origin.', async (repoPath) => {
-    await push(repoPath);
-  });
 }
 
 export async function publishChanges(files: string[], message: string): Promise<void> {
@@ -462,7 +424,7 @@ export async function restoreLastSession(): Promise<boolean> {
       if (session.last_branch && branches.includes(session.last_branch)) {
         try {
           await switchBranch(localPath, session.last_branch);
-          branchState.set({ current: session.last_branch, branches: [...branches].sort((a, b) => a.localeCompare(b)) });
+          branchState.set({ current: session.last_branch, branches: [...branches].sort((a, b) => a.localeCompare(b)), busy: false, error: null, lastAction: null });
         } catch {
           // Switch failed — stay on current branch
           await refreshBranches();
@@ -491,8 +453,7 @@ export function resetRepoSession(): void {
   activeRepo.set(null);
   repoState.set({ loading: false, cloning: null, error: null });
   gitState.set({ entries: [], busy: false, error: null, lastAction: null });
-  branchState.set({ current: 'main', branches: ['main'] });
-  branchUiState.set({ busy: false, error: null, lastAction: null });
+  branchState.set({ current: 'main', branches: ['main'], busy: false, error: null, lastAction: null });
   fileTree.set([]);
   resetEditorState();
   clearLastSession().catch(() => {});

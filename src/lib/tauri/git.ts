@@ -17,22 +17,6 @@ export async function cloneRepo(owner: string, name: string, path?: string): Pro
   return tauriInvoke<string>('clone_repo', { owner, name, path });
 }
 
-export async function stage(repoPath: string, files: string[]): Promise<void> {
-  await tauriInvoke('git_stage', { repoPath, files });
-}
-
-export async function unstage(repoPath: string, files: string[]): Promise<void> {
-  await tauriInvoke('git_unstage', { repoPath, files });
-}
-
-export async function commit(repoPath: string, message: string): Promise<string> {
-  return tauriInvoke<string>('git_commit', { repoPath, message });
-}
-
-export async function push(repoPath: string): Promise<void> {
-  await tauriInvoke('git_push', { repoPath });
-}
-
 export async function publish(repoPath: string, files: string[], message: string): Promise<string> {
   return tauriInvoke<string>('git_publish', { repoPath, files, message });
 }

@@ -29,7 +29,6 @@ pub fn run() {
             git::status::git_status,
             git::status::git_diff_file,
             git::commit::git_stage,
-            git::commit::git_unstage,
             git::commit::git_commit,
             git::commit::git_revert_files,
             git::publish::git_publish,

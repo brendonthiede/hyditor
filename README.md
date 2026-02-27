@@ -251,6 +251,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ Simplified BranchSelector: removed "Create Branch" input/button and "Refresh" button; the component now contains only the branch dropdown; `create_branch` Tauri command, `createBranch` IPC wrapper, and `createRepoBranch` store function removed from codebase
 - ✅ Jekyll prerequisite detection: when `bundle` or `jekyll` commands are missing or not functional (e.g. rbenv shim without the required Ruby version), the preview panel shows a clear error message with a link to the Jekyll Prerequisites setup guide in the README; `shell_command_exists` now runs `--version` instead of `command -v` to detect version-manager shim failures; `bundle install` stderr is captured and surfaced; error URLs in the preview panel are rendered as clickable links that open in the system browser
 - ✅ Single Publish action: `git_publish` backend command stages eligible files → commits → pushes in one atomic IPC call; the GitPanel "Publish" button uses an auto-generated commit message (`"Changes made using Hyditor on M/D/YYYY"`) when no change notes are provided; if push fails after a successful commit the error includes the commit hash for recovery
+- ✅ Dead code cleanup: removed `git_unstage` Rust command, `unstage`/`stage`/`commit`/`push` Tauri wrappers (superseded by atomic `git_publish`), `stageFiles`/`unstageFiles`/`commitChanges`/`pushChanges` dead store functions; folded `branchUiState` into `branchState` to eliminate the separate store
 
 ## Contributor Workflow
 
@@ -363,7 +364,7 @@ The current stage/unstage/commit/push workflow is being replaced with a streamli
 4. ~~**Single Publish action**~~ ✅ — replaced separate stage/commit/push calls with a single `git_publish` backend command that stages eligible files → commits (with optional change notes or auto-generated message `"Changes made using Hyditor on M/D/YYYY"`) → pushes atomically; if push fails after a successful commit, the error message includes the commit hash
 5. ~~**Add `git_discard_file` backend command**~~ ✅ — implemented as `git_revert_files` Rust command; reverts tracked files (checkout from HEAD) and deletes untracked files
 6. ~~**Persist current branch per-repo**~~ ✅ — renamed `default_branch` to `last_branch` in session (`serde(alias)` for backward compatibility with existing session files); session saves current branch on branch switch, file open, and repo selection; `restoreLastSession` switches to the saved branch with graceful fallback if it no longer exists
-7. **Remove dead code** — `git_unstage` command, `pullRequestState`/`branchUiState` stores, `refreshPullRequests`/`createRepoPullRequest` store functions, `unstage` Tauri wrapper
+7. ~~**Remove dead code**~~ ✅ — removed `git_unstage` Rust command + test + handler registration; removed `unstage`, `stage`, `commit`, `push` Tauri wrappers (superseded by atomic `publish`); removed `stageFiles`, `unstageFiles`, `commitChanges`, `pushChanges` dead store functions; folded `branchUiState` fields (`busy`, `error`, `lastAction`) into `branchState` and removed the separate store
 
 ### Future
 

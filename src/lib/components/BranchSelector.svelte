@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { branchState, branchUiState, switchRepoBranch } from '$lib/stores/repo';
+  import { branchState, switchRepoBranch } from '$lib/stores/repo';
 
   let selectedBranch = '';
 
@@ -27,7 +27,7 @@
       id="branch-select"
       bind:value={selectedBranch}
       on:change={onSwitchBranch}
-      disabled={$branchUiState.busy}
+      disabled={$branchState.busy}
     >
       {#each $branchState.branches as branch}
         <option value={branch}>{branch}</option>
@@ -35,10 +35,10 @@
     </select>
   </div>
 
-  {#if $branchUiState.error}
-    <p class="message error">{$branchUiState.error}</p>
-  {:else if $branchUiState.lastAction}
-    <p class="message success">{$branchUiState.lastAction}</p>
+  {#if $branchState.error}
+    <p class="message error">{$branchState.error}</p>
+  {:else if $branchState.lastAction}
+    <p class="message success">{$branchState.lastAction}</p>
   {/if}
 </section>
 

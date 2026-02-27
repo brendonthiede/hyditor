@@ -43,23 +43,6 @@ pub fn git_stage(repo_path: String, files: Vec<String>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn git_unstage(repo_path: String, files: Vec<String>) -> Result<(), String> {
-    if files.is_empty() {
-        return Ok(());
-    }
-
-    let repo = Repository::open(repo_path).map_err(|e| format!("failed to open repo: {e}"))?;
-    let head_target = repo
-        .head()
-        .ok()
-        .and_then(|head| head.peel(git2::ObjectType::Commit).ok());
-
-    repo.reset_default(head_target.as_ref(), files.iter())
-        .map_err(|e| format!("failed to unstage files: {e}"))?;
-    Ok(())
-}
-
-#[tauri::command]
 pub fn git_commit(repo_path: String, message: String) -> Result<String, String> {
     if message.trim().is_empty() {
         return Err("commit message cannot be empty".to_string());
@@ -224,9 +207,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn git_unstage_empty_files_is_noop() {
-        let result = git_unstage("/nonexistent".to_string(), vec![]);
-        assert!(result.is_ok(), "unstage with empty files should be a no-op");
-    }
 }
