@@ -239,9 +239,13 @@
     </div>
 
     {#if $layout.leftPanelBlade === 'search'}
-      <SearchPanel />
+      <div class="blade-content">
+        <SearchPanel />
+      </div>
     {:else if $layout.leftPanelBlade === 'git'}
-      <GitPanel />
+      <div class="blade-content">
+        <GitPanel />
+      </div>
     {:else}
       {#if $fileTree.length > 0}
         <div class="filter-row">
@@ -259,13 +263,15 @@
           </p>
         {/if}
       {/if}
-      {#if $fileTree.length === 0}
-        <p>No files loaded.</p>
-      {:else if filteredItems.length === 0}
-        <p class="no-results">No files match.</p>
-      {:else}
-        <svelte:self nodes={displayNodes} />
-      {/if}
+      <div class="file-list-scroll">
+        {#if $fileTree.length === 0}
+          <p>No files loaded.</p>
+        {:else if filteredItems.length === 0}
+          <p class="no-results">No files match.</p>
+        {:else}
+          <svelte:self nodes={displayNodes} />
+        {/if}
+      </div>
     {/if}
   </section>
 {:else}
@@ -298,7 +304,9 @@
   .file-tree {
     height: 100%;
     padding: 0.75rem;
-    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 
   .file-tree-header {
@@ -306,6 +314,7 @@
     align-items: center;
     justify-content: space-between;
     margin-bottom: 0.25rem;
+    flex-shrink: 0;
   }
 
   .blade-tabs {
@@ -379,6 +388,7 @@
 
   .filter-row {
     margin-bottom: 0.35rem;
+    flex-shrink: 0;
   }
 
   .filter-input {
@@ -401,6 +411,21 @@
     font-size: 0.75rem;
     opacity: 0.6;
     margin: 0 0 0.35rem;
+    flex-shrink: 0;
+  }
+
+  .blade-content {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .file-list-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
   }
 
   .inline-link {

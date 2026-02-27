@@ -207,7 +207,9 @@
   .git {
     height: 100%;
     padding: 0.75rem;
-    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 
   header {
@@ -215,6 +217,7 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: 0.75rem;
+    flex-shrink: 0;
   }
 
   h4 {
@@ -222,9 +225,16 @@
     font-size: 0.9rem;
   }
 
-  .files-section,
+  .files-section {
+    margin-bottom: 1rem;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
   .publish-section {
     margin-bottom: 1rem;
+    flex-shrink: 0;
   }
 
   .section-head {
@@ -251,8 +261,6 @@
     list-style: none;
     display: grid;
     gap: 0.25rem;
-    max-height: 20rem;
-    overflow: auto;
   }
 
   .file-row {

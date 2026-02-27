@@ -252,6 +252,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ Jekyll prerequisite detection: when `bundle` or `jekyll` commands are missing or not functional (e.g. rbenv shim without the required Ruby version), the preview panel shows a clear error message with a link to the Jekyll Prerequisites setup guide in the README; `shell_command_exists` now runs `--version` instead of `command -v` to detect version-manager shim failures; `bundle install` stderr is captured and surfaced; error URLs in the preview panel are rendered as clickable links that open in the system browser
 - ✅ Single Publish action: `git_publish` backend command stages eligible files → commits → pushes in one atomic IPC call; the GitPanel "Publish" button uses an auto-generated commit message (`"Changes made using Hyditor on M/D/YYYY"`) when no change notes are provided; if push fails after a successful commit the error includes the commit hash for recovery
 - ✅ Dead code cleanup: removed `git_unstage` Rust command, `unstage`/`stage`/`commit`/`push` Tauri wrappers (superseded by atomic `git_publish`), `stageFiles`/`unstageFiles`/`commitChanges`/`pushChanges` dead store functions; folded `branchUiState` into `branchState` to eliminate the separate store
+- ✅ Pinned panel headers: the left sidebar (Files/Search/Publish) uses a flex column layout so the blade tab selector, filter inputs, and search input remain fixed at the top while long file lists and search results scroll independently; the Publish panel pins its header and publish controls at the top/bottom with only the changed-files list scrolling
 
 ## Contributor Workflow
 
@@ -351,8 +352,6 @@ Generated outputs:
 For in-app UI use (e.g. the auth screen), place SVG or PNG assets under `src/lib/assets/` and import them directly in Svelte components.
 
 ## Next Work
-
-- In the file tree/search/publish panel, we should pin the top portion of the panel so that you can still see the tab selector (Files/Search/Publish) and filter inputs while scrolling through long lists of files or search results.
 
 ### Simplified Publish Workflow (in progress)
 

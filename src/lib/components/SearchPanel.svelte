@@ -180,6 +180,7 @@
 
   .search-input-row {
     padding: 0.5rem 0.75rem 0.35rem;
+    flex-shrink: 0;
   }
 
   .search-input {
