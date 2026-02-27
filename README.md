@@ -21,12 +21,13 @@ Pre-built binaries for Linux, Windows, and macOS are attached to every [GitHub R
 
 ## Status
 
-This repository contains the **Phase 1 foundation** plus ongoing **Phase 2 simplification** work:
+Phase 1 (foundation) and Phase 2 (simplified publish workflow) are **complete**:
 
 - Tauri v2 backend structure in `src-tauri/`
 - SvelteKit + TypeScript frontend structure in `src/`
 - Full IPC command contracts for auth, repos, git, preview, and scoped filesystem
 - Complete app layout with auth, repo selection, editor, preview, and publish workflow
+- Streamlined one-click publish replacing the old stage/unstage/commit/push workflow
 
 ## Publish Workflow (current direction)
 
@@ -203,7 +204,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - Tauri capability allowlist + CSP
 - Git operations through Rust (git2) command layer
 
-## Implemented (Phase 1)
+## Implemented
 
 - ✅ GitHub Device Flow authentication (OAuth App or GitHub App) with token refresh
 - ✅ Stronghold-backed encrypted token storage with OS keychain-backed key derivation
@@ -352,19 +353,5 @@ Generated outputs:
 For in-app UI use (e.g. the auth screen), place SVG or PNG assets under `src/lib/assets/` and import them directly in Svelte components.
 
 ## Next Work
-
-### Simplified Publish Workflow (in progress)
-
-The current stage/unstage/commit/push workflow is being replaced with a streamlined "Publish" flow:
-
-1. ~~**Remove PRDialog component**~~ ✅ — deleted `PRDialog.svelte` and all references; removed `create_pr`, `list_prs` Tauri commands and `pull_request.rs` backend module
-2. ~~**Simplify BranchSelector**~~ ✅ — removed "Create Branch" input/button and "Refresh" button; kept only the branch dropdown; removed `create_branch` Tauri command from backend
-3. ~~**Redesign GitPanel**~~ ✅ — replaced staged/unstaged sections with a flat changed-files list; each file has "Revert" (with confirmation dialog) and ⛔ "Do not publish" toggle; auto-refresh git status on panel mount (replaces manual Refresh button)
-4. ~~**Single Publish action**~~ ✅ — replaced separate stage/commit/push calls with a single `git_publish` backend command that stages eligible files → commits (with optional change notes or auto-generated message `"Changes made using Hyditor on M/D/YYYY"`) → pushes atomically; if push fails after a successful commit, the error message includes the commit hash
-5. ~~**Add `git_discard_file` backend command**~~ ✅ — implemented as `git_revert_files` Rust command; reverts tracked files (checkout from HEAD) and deletes untracked files
-6. ~~**Persist current branch per-repo**~~ ✅ — renamed `default_branch` to `last_branch` in session (`serde(alias)` for backward compatibility with existing session files); session saves current branch on branch switch, file open, and repo selection; `restoreLastSession` switches to the saved branch with graceful fallback if it no longer exists
-7. ~~**Remove dead code**~~ ✅ — removed `git_unstage` Rust command + test + handler registration; removed `unstage`, `stage`, `commit`, `push` Tauri wrappers (superseded by atomic `publish`); removed `stageFiles`, `unstageFiles`, `commitChanges`, `pushChanges` dead store functions; folded `branchUiState` fields (`busy`, `error`, `lastAction`) into `branchState` and removed the separate store
-
-### Future
 
 - Define next roadmap item
