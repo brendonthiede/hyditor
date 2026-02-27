@@ -137,7 +137,8 @@ export async function openRepoFile(relativePath: string, localPathOverride?: str
     // Persist the currently opened file for session restore
     const repo = get(activeRepo);
     if (repo) {
-      saveLastSession(repo.owner, repo.name, repo.default_branch, relativePath).catch(() => {});
+      const currentBranch = get(branchState).current;
+      saveLastSession(repo.owner, repo.name, currentBranch, relativePath).catch(() => {});
     }
   } catch {
     return;
@@ -196,7 +197,8 @@ export async function selectRepo(repo: RepoInfo): Promise<void> {
 
     // Persist selected repo for session restore
     const currentFile = get(editorState).currentFile;
-    saveLastSession(repo.owner, repo.name, repo.default_branch, currentFile).catch(() => {});
+    const currentBranch = get(branchState).current;
+    saveLastSession(repo.owner, repo.name, currentBranch, currentFile).catch(() => {});
   } catch (error) {
     if (handleAuthExpiredError(error)) {
       return;
@@ -286,6 +288,13 @@ export async function switchRepoBranch(branchName: string): Promise<void> {
   await runBranchAction(`Switched to branch ${trimmed}.`, async (repoPath) => {
     await switchBranch(repoPath, trimmed);
     branchState.update((state) => ({ ...state, current: trimmed }));
+
+    // Persist the newly selected branch for session restore
+    const repo = get(activeRepo);
+    if (repo) {
+      const currentFile = get(editorState).currentFile;
+      saveLastSession(repo.owner, repo.name, trimmed, currentFile).catch(() => {});
+    }
   });
 }
 
@@ -425,7 +434,7 @@ export async function restoreLastSession(): Promise<boolean> {
     const repo: RepoInfo = {
       owner: session.owner,
       name: session.name,
-      default_branch: session.default_branch
+      default_branch: session.last_branch
     };
 
     const repoKey = `${repo.owner}/${repo.name}`;
@@ -447,7 +456,21 @@ export async function restoreLastSession(): Promise<boolean> {
       }
 
       await refreshGitStatus();
-      await refreshBranches();
+
+      // Try to restore the last-used branch; fall back gracefully if it no longer exists
+      const branches = await listBranches(localPath);
+      if (session.last_branch && branches.includes(session.last_branch)) {
+        try {
+          await switchBranch(localPath, session.last_branch);
+          branchState.set({ current: session.last_branch, branches: [...branches].sort((a, b) => a.localeCompare(b)) });
+        } catch {
+          // Switch failed — stay on current branch
+          await refreshBranches();
+        }
+      } else {
+        await refreshBranches();
+      }
+
       void setPreviewMode('jekyll', localPath);
       return true;
     } catch {

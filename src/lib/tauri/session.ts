@@ -3,20 +3,20 @@ import { tauriInvoke } from '$lib/tauri/runtime';
 export type LastSession = {
   owner: string;
   name: string;
-  default_branch: string;
+  last_branch: string;
   last_file: string | null;
 };
 
 export async function saveLastSession(
   owner: string,
   name: string,
-  defaultBranch: string,
+  lastBranch: string,
   lastFile: string | null
 ): Promise<void> {
   await tauriInvoke('save_last_session', {
     owner,
     name,
-    defaultBranch,
+    lastBranch,
     lastFile
   });
 }

@@ -6,7 +6,8 @@ use std::path::PathBuf;
 pub struct LastSession {
     pub owner: String,
     pub name: String,
-    pub default_branch: String,
+    #[serde(alias = "default_branch")]
+    pub last_branch: String,
     pub last_file: Option<String>,
 }
 
@@ -20,13 +21,13 @@ fn session_file_path() -> Result<PathBuf, String> {
 pub fn save_last_session(
     owner: String,
     name: String,
-    default_branch: String,
+    last_branch: String,
     last_file: Option<String>,
 ) -> Result<(), String> {
     let session = LastSession {
         owner,
         name,
-        default_branch,
+        last_branch,
         last_file,
     };
     let path = session_file_path()?;

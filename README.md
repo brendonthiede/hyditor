@@ -215,6 +215,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ Debounced editor autosave to scoped filesystem
 - ✅ Git status, staging, commit, and push UI with file selectors
 - ✅ Branch switching UI (list/switch) with local checkout refresh
+- ✅ Per-repo branch persistence: last-used branch saved to session on switch/file open; restored on session reload with graceful fallback if the branch no longer exists; backward-compatible with existing session files via `serde(alias)`
 - ✅ FrontMatterForm structured editor with add/edit/remove field workflow (Phase 3)
 - ✅ Security hardening: explicit local sign-out + revocation guidance UX for refresh-token invalidation edge cases
 - ✅ Security hardening: proactive expired-token detection in GitHub/repo workflows with guided re-auth prompts
@@ -361,7 +362,7 @@ The current stage/unstage/commit/push workflow is being replaced with a streamli
 3. ~~**Redesign GitPanel**~~ ✅ — replaced staged/unstaged sections with a flat changed-files list; each file has "Revert" (with confirmation dialog) and ⛔ "Do not publish" toggle; auto-refresh git status on panel mount (replaces manual Refresh button)
 4. ~~**Single Publish action**~~ ✅ — replaced separate stage/commit/push calls with a single `git_publish` backend command that stages eligible files → commits (with optional change notes or auto-generated message `"Changes made using Hyditor on M/D/YYYY"`) → pushes atomically; if push fails after a successful commit, the error message includes the commit hash
 5. ~~**Add `git_discard_file` backend command**~~ ✅ — implemented as `git_revert_files` Rust command; reverts tracked files (checkout from HEAD) and deletes untracked files
-6. **Persist current branch per-repo** — rename `default_branch` to `last_branch` in session; save on branch switch and file open; restore on session reload with graceful fallback if branch no longer exists
+6. ~~**Persist current branch per-repo**~~ ✅ — renamed `default_branch` to `last_branch` in session (`serde(alias)` for backward compatibility with existing session files); session saves current branch on branch switch, file open, and repo selection; `restoreLastSession` switches to the saved branch with graceful fallback if it no longer exists
 7. **Remove dead code** — `git_unstage` command, `pullRequestState`/`branchUiState` stores, `refreshPullRequests`/`createRepoPullRequest` store functions, `unstage` Tauri wrapper
 
 ### Future
