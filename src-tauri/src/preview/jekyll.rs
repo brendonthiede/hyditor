@@ -7,6 +7,15 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+/// Windows creation flag: run the child process without creating a visible
+/// console window.  Prevents PowerShell / taskkill from flashing a window
+/// when launched from the GUI app.
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 const PREVIEW_HOST: &str = "127.0.0.1";
 const PREVIEW_BOOT_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -85,14 +94,15 @@ fn kill_process(child: &mut Child) -> io::Result<()> {
         return Ok(());
     }
 
-    // On Windows, `child.kill()` only terminates the immediate process (cmd.exe),
-    // leaving the Jekyll subprocess running.  Use `taskkill /F /T /PID` to kill the
-    // entire process tree.
+    // On Windows, `child.kill()` only terminates the immediate process
+    // (powershell.exe), leaving the Jekyll subprocess running.  Use
+    // `taskkill /F /T /PID` to kill the entire process tree.
     #[cfg(target_os = "windows")]
     {
         let pid = child.id();
         let _ = Command::new("taskkill")
             .args(["/F", "/T", "/PID", &pid.to_string()])
+            .creation_flags(CREATE_NO_WINDOW)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();
@@ -111,13 +121,17 @@ fn kill_process(child: &mut Child) -> io::Result<()> {
 /// Run a shell command via the platform-appropriate shell.
 ///
 /// On Unix this uses `bash -l -c` so that login-shell profile scripts
-/// (rbenv, rvm, etc.) are sourced.  On Windows this uses `cmd.exe /C`
-/// which inherits the system PATH where RubyInstaller places its binaries.
+/// (rbenv, rvm, etc.) are sourced.  On Windows this uses
+/// `powershell.exe -NonInteractive -Command` which loads the user's
+/// PowerShell profile (where Ruby version managers or custom PATH
+/// additions may be configured), matching the Unix login-shell behaviour.
+/// The `CREATE_NO_WINDOW` flag prevents a console window from flashing.
 fn shell_command(cmd: &str) -> Command {
     #[cfg(target_os = "windows")]
     {
-        let mut c = Command::new("cmd.exe");
-        c.args(["/C", cmd]);
+        let mut c = Command::new("powershell.exe");
+        c.args(["-NonInteractive", "-Command", cmd]);
+        c.creation_flags(CREATE_NO_WINDOW);
         c
     }
 
@@ -131,7 +145,7 @@ fn shell_command(cmd: &str) -> Command {
 
 fn shell_command_exists(name: &str) -> bool {
     #[cfg(target_os = "windows")]
-    let check_cmd = format!("where {name}");
+    let check_cmd = format!("Get-Command {name} -ErrorAction SilentlyContinue");
 
     #[cfg(not(target_os = "windows"))]
     let check_cmd = format!("command -v {name} >/dev/null 2>&1");
