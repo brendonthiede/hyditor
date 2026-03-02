@@ -2,10 +2,12 @@
   import { onDestroy, onMount } from 'svelte';
   import { listen } from '@tauri-apps/api/event';
   import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
-  import { openUrl } from '@tauri-apps/plugin-opener';
+  import { writeText as writeClipboardText } from '@tauri-apps/plugin-clipboard-manager';
+  import { openPath, openUrl } from '@tauri-apps/plugin-opener';
   import ViewportToolbar from '$lib/components/ViewportToolbar.svelte';
   import { editorState } from '$lib/stores/editor';
   import { previewState, stopJekyllPreview } from '$lib/stores/preview';
+  import { getPreviewLogDirectory } from '$lib/tauri/preview';
   import { layout } from '$lib/stores/layout';
   import { parseFrontmatter } from '$lib/utils/frontmatter';
   import { renderMarkdown } from '$lib/utils/markdown';
@@ -39,6 +41,46 @@
     openUrl(url).catch(() => {
       // Fallback: the URL is still visible, the user can copy it manually.
     });
+  }
+
+  let diagnosticsCopied = false;
+  let diagnosticsCopyTimer: ReturnType<typeof setTimeout> | null = null;
+  let logFolderOpened = false;
+  let logFolderOpenTimer: ReturnType<typeof setTimeout> | null = null;
+
+  async function copyDiagnostics(): Promise<void> {
+    const message = $previewState.error;
+    if (!message) return;
+    try {
+      await writeClipboardText(message);
+      diagnosticsCopied = true;
+      if (diagnosticsCopyTimer !== null) {
+        clearTimeout(diagnosticsCopyTimer);
+      }
+      diagnosticsCopyTimer = setTimeout(() => {
+        diagnosticsCopied = false;
+        diagnosticsCopyTimer = null;
+      }, 2000);
+    } catch {
+      // Silently ignore clipboard errors
+    }
+  }
+
+  async function openLogFolder(): Promise<void> {
+    try {
+      const path = await getPreviewLogDirectory();
+      await openPath(path);
+      logFolderOpened = true;
+      if (logFolderOpenTimer !== null) {
+        clearTimeout(logFolderOpenTimer);
+      }
+      logFolderOpenTimer = setTimeout(() => {
+        logFolderOpened = false;
+        logFolderOpenTimer = null;
+      }, 2000);
+    } catch {
+      // Silently ignore open errors
+    }
   }
 
   $: parsed = parseFrontmatter($editorState.currentContent);
@@ -130,6 +172,8 @@
   onDestroy(() => {
     void stopJekyllPreview();
     if (debounceTimer !== null) clearTimeout(debounceTimer);
+    if (diagnosticsCopyTimer !== null) clearTimeout(diagnosticsCopyTimer);
+    if (logFolderOpenTimer !== null) clearTimeout(logFolderOpenTimer);
     unlistenPopupReady?.();
     unlistenPopupDestroyed?.();
   });
@@ -141,13 +185,23 @@
   <ViewportToolbar />
   {#if $previewState.error}
     <div class="error">
-      {#each errorSegments as segment}
-        {#if segment.kind === 'url'}
-          <a href={segment.value} on:click|preventDefault={() => handleLinkClick(segment.value)}>{segment.value}</a>
-        {:else}
-          {segment.value}
-        {/if}
-      {/each}
+      <div class="error-actions">
+        <button class="error-copy-btn" on:click={() => void copyDiagnostics()}>
+          {diagnosticsCopied ? 'Copied!' : 'Copy diagnostics'}
+        </button>
+        <button class="error-copy-btn" on:click={() => void openLogFolder()}>
+          {logFolderOpened ? 'Opened!' : 'Open log folder'}
+        </button>
+      </div>
+      <div class="error-body">
+        {#each errorSegments as segment}
+          {#if segment.kind === 'url'}
+            <a href={segment.value} on:click|preventDefault={() => handleLinkClick(segment.value)}>{segment.value}</a>
+          {:else}
+            {segment.value}
+          {/if}
+        {/each}
+      </div>
     </div>
   {/if}
   <div class="preview-canvas">
@@ -197,8 +251,32 @@
     padding: 0.5rem 0.75rem;
     border-bottom: 1px solid #30363d;
     color: #f85149;
-    white-space: pre-line;
     font-size: 0.85rem;
+  }
+
+  .error-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .error-copy-btn {
+    border: 1px solid #30363d;
+    background: #161b22;
+    color: #c9d1d9;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.5rem;
+    cursor: pointer;
+  }
+
+  .error-copy-btn:hover {
+    background: #21262d;
+  }
+
+  .error-body {
+    white-space: pre-line;
   }
 
   .error a {

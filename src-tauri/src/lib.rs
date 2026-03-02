@@ -43,7 +43,9 @@ pub fn run() {
             fs::session::load_last_session,
             fs::session::clear_last_session,
             preview::jekyll::start_jekyll,
-            preview::jekyll::stop_jekyll
+            preview::jekyll::stop_jekyll,
+            preview::jekyll::read_preview_log_tail,
+            preview::jekyll::get_preview_log_directory
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -67,3 +67,13 @@ Most Jekyll sites include a `Gemfile`. When Full Preview starts, Hyditor runs `b
 - The `Gemfile` is valid and committed.
 - Your Ruby version satisfies any version constraint in the `Gemfile` or `.ruby-version`.
 - Native extension build dependencies are installed (e.g. `build-essential` on Debian/Ubuntu).
+
+## Troubleshooting logs
+
+Hyditor writes Full Preview diagnostics to a persistent `preview.log` file. This includes startup messages, `bundle install` output, and Jekyll stdout/stderr.
+
+- Windows: `%LOCALAPPDATA%\\hyditor\\logs\\preview.log`
+- Linux: `~/.local/share/hyditor/logs/preview.log`
+- macOS: `~/Library/Application Support/hyditor/logs/preview.log`
+
+If Full Preview fails with an early exit message, open this file first to see the underlying Ruby/Bundler/Jekyll error details.

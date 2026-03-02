@@ -1,5 +1,6 @@
 use once_cell::sync::Lazy;
-use std::io;
+use std::fs::{self, OpenOptions};
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -18,6 +19,7 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 const PREVIEW_HOST: &str = "127.0.0.1";
 const PREVIEW_BOOT_TIMEOUT: Duration = Duration::from_secs(60);
+const PREVIEW_LOG_FILE_NAME: &str = "preview.log";
 
 /// URL to the Jekyll prerequisites guide in the project README.
 const JEKYLL_SETUP_GUIDE: &str =
@@ -51,12 +53,91 @@ struct ActiveJekyll {
 
 static ACTIVE_JEKYLL: Lazy<Mutex<Option<ActiveJekyll>>> = Lazy::new(|| Mutex::new(None));
 
+fn resolve_preview_log_path() -> Option<PathBuf> {
+    let mut base = dirs::data_local_dir().or_else(dirs::cache_dir)?;
+    base.push("hyditor");
+    base.push("logs");
+    base.push(PREVIEW_LOG_FILE_NAME);
+    Some(base)
+}
+
+fn append_preview_log(message: &str) {
+    let Some(path) = resolve_preview_log_path() else {
+        return;
+    };
+
+    let Some(parent) = path.parent() else {
+        return;
+    };
+
+    if fs::create_dir_all(parent).is_err() {
+        return;
+    }
+
+    let mut file = match OpenOptions::new().create(true).append(true).open(path) {
+        Ok(file) => file,
+        Err(_) => return,
+    };
+
+    let _ = writeln!(file, "{message}");
+}
+
+fn read_log_tail_from_path(path: &Path, max_lines: usize) -> Result<String, String> {
+    if max_lines == 0 {
+        return Ok(String::new());
+    }
+
+    if !path.exists() {
+        return Ok(String::new());
+    }
+
+    let content = fs::read_to_string(path)
+        .map_err(|err| format!("failed to read preview log file: {err}"))?;
+
+    let mut lines: Vec<&str> = content.lines().rev().take(max_lines).collect();
+    lines.reverse();
+    Ok(lines.join("\n"))
+}
+
 fn log_preview(message: &str) {
     let ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis())
         .unwrap_or(0);
-    eprintln!("[Preview][{ts}] {message}");
+    let line = format!("[Preview][{ts}] {message}");
+    eprintln!("{line}");
+    append_preview_log(&line);
+}
+
+fn spawn_stream_logger<R>(stream: R, stream_name: &'static str)
+where
+    R: Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let reader = BufReader::new(stream);
+        for line in reader.lines() {
+            match line {
+                Ok(line) if !line.trim().is_empty() => {
+                    log_preview(&format!("[jekyll {stream_name}] {line}"));
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    log_preview(&format!("failed reading Jekyll {stream_name}: {err}"));
+                    break;
+                }
+            }
+        }
+    });
+}
+
+fn attach_jekyll_output_logging(child: &mut Child) {
+    if let Some(stdout) = child.stdout.take() {
+        spawn_stream_logger(stdout, "stdout");
+    }
+
+    if let Some(stderr) = child.stderr.take() {
+        spawn_stream_logger(stderr, "stderr");
+    }
 }
 
 fn wait_for_preview_ready(child: &mut Child, port: u16) -> Result<(), String> {
@@ -175,6 +256,12 @@ fn bundle_install(repo_path: &Path) -> Result<(), String> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let combined = format!("{stdout}{stderr}");
 
+    for line in combined.lines() {
+        if !line.trim().is_empty() {
+            log_preview(&format!("[bundle install] {line}"));
+        }
+    }
+
     // Print captured output so it appears in the dev terminal for debugging.
     if !stderr.is_empty() {
         eprint!("{stderr}");
@@ -231,12 +318,15 @@ fn start_jekyll_process(repo_path: &Path, port: u16) -> Result<Child, String> {
 
     log_preview(&format!("shell command: {shell_cmd}"));
 
-    shell_command(&shell_cmd)
+    let mut child = shell_command(&shell_cmd)
         .current_dir(repo_path)
-        .stdout(Stdio::null())
-        .stderr(Stdio::inherit())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
-        .map_err(|err| jekyll_setup_error(&format!("Failed to launch Jekyll preview process: {err}")))
+        .map_err(|err| jekyll_setup_error(&format!("Failed to launch Jekyll preview process: {err}")))?;
+
+    attach_jekyll_output_logging(&mut child);
+    Ok(child)
 }
 
 #[tauri::command]
@@ -309,6 +399,27 @@ pub fn stop_jekyll() -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub fn read_preview_log_tail(lines: Option<usize>) -> Result<String, String> {
+    let max_lines = lines.unwrap_or(50).clamp(1, 500);
+    let Some(path) = resolve_preview_log_path() else {
+        return Err("failed to resolve preview log path".to_string());
+    };
+    read_log_tail_from_path(&path, max_lines)
+}
+
+#[tauri::command]
+pub fn get_preview_log_directory() -> Result<String, String> {
+    let Some(path) = resolve_preview_log_path() else {
+        return Err("failed to resolve preview log path".to_string());
+    };
+
+    let dir = path
+        .parent()
+        .ok_or_else(|| "failed to resolve preview log directory".to_string())?;
+    Ok(dir.to_string_lossy().to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,5 +458,24 @@ mod tests {
     #[test]
     fn preview_host_constant() {
         assert_eq!(PREVIEW_HOST, "127.0.0.1");
+    }
+
+    #[test]
+    fn read_log_tail_returns_last_lines() {
+        let temp = tempfile::tempdir().expect("temp dir should create");
+        let log_path = temp.path().join("preview.log");
+        std::fs::write(&log_path, "a\nb\nc\nd\n").expect("write should succeed");
+
+        let tail = read_log_tail_from_path(&log_path, 2).expect("tail should read");
+        assert_eq!(tail, "c\nd");
+    }
+
+    #[test]
+    fn read_log_tail_missing_file_returns_empty() {
+        let temp = tempfile::tempdir().expect("temp dir should create");
+        let log_path = temp.path().join("missing.log");
+
+        let tail = read_log_tail_from_path(&log_path, 50).expect("tail should read");
+        assert!(tail.is_empty());
     }
 }

@@ -94,6 +94,12 @@ To use a different client ID for local development without changing the committe
 
 Hyditor's **Full Preview** mode runs Jekyll locally to render your site. Ruby, Bundler, and Jekyll must be installed and available in your shell. If they are missing, the preview panel will show an error with a link to the setup guide.
 
+If Full Preview fails in an installed app build, inspect the persistent preview log:
+
+- Windows: `%LOCALAPPDATA%\\hyditor\\logs\\preview.log`
+- Linux: `~/.local/share/hyditor/logs/preview.log`
+- macOS: `~/Library/Application Support/hyditor/logs/preview.log`
+
 **→ [Jekyll Prerequisites — full setup instructions](docs/jekyll-prerequisites.md)**
 
 ## Developing over SSH (Windows)
@@ -251,6 +257,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ Jekyll preview file navigation: the preview iframe is wrapped in a `{#key}` block so clicking a different file in the file tree always navigates to the correct post/draft page — fixes a regression where the iframe `src` attribute update did not trigger navigation in WebKit
 - ✅ Simplified BranchSelector: removed "Create Branch" input/button and "Refresh" button; the component now contains only the branch dropdown; `create_branch` Tauri command, `createBranch` IPC wrapper, and `createRepoBranch` store function removed from codebase
 - ✅ Jekyll prerequisite detection: when `bundle` or `jekyll` commands are missing or not functional (e.g. rbenv shim without the required Ruby version), the preview panel shows a clear error message with a link to the Jekyll Prerequisites setup guide in the README; `shell_command_exists` now runs `--version` instead of `command -v` to detect version-manager shim failures; `bundle install` stderr is captured and surfaced; error URLs in the preview panel are rendered as clickable links that open in the system browser
+- ✅ Full Preview persistent diagnostics: Jekyll startup logs, `bundle install` output, and Jekyll stdout/stderr are written to `preview.log` under the app-local data folder (`%LOCALAPPDATA%\\hyditor\\logs` on Windows); startup failures include the latest log tail inline in the preview error panel as "Recent Full Preview log lines", with quick actions to "Copy diagnostics" and "Open log folder"
 - ✅ Single Publish action: `git_publish` backend command stages eligible files → commits → pushes in one atomic IPC call; the GitPanel "Publish" button uses an auto-generated commit message (`"Changes made using Hyditor on M/D/YYYY"`) when no change notes are provided; if push fails after a successful commit the error includes the commit hash for recovery
 - ✅ Dead code cleanup: removed `git_unstage` Rust command, `unstage`/`stage`/`commit`/`push` Tauri wrappers (superseded by atomic `git_publish`), `stageFiles`/`unstageFiles`/`commitChanges`/`pushChanges` dead store functions; folded `branchUiState` into `branchState` to eliminate the separate store
 - ✅ Pinned panel headers: the left sidebar (Files/Search/Publish) uses a flex column layout so the blade tab selector, filter inputs, and search input remain fixed at the top while long file lists and search results scroll independently; the Publish panel pins its header and publish controls at the top/bottom with only the changed-files list scrolling

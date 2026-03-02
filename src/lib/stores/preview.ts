@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import { startJekyll, stopJekyll } from '$lib/tauri/preview';
+import { readPreviewLogTail, startJekyll, stopJekyll } from '$lib/tauri/preview';
 import { readFile } from '$lib/tauri/fs';
 import { parseSitePermalink } from '$lib/utils/jekyll';
 
@@ -104,11 +104,22 @@ export async function setPreviewMode(
       typeof error === 'string' ? error
       : error instanceof Error ? error.message
       : '';
+
+    let logTail = '';
+    try {
+      const tail = await readPreviewLogTail(50);
+      if (tail.trim().length > 0) {
+        logTail = `\n\nRecent Full Preview log lines:\n${tail}`;
+      }
+    } catch {
+      // noop
+    }
+
     const alreadyHasLink = detail.includes(JEKYLL_GUIDE);
     const suffix = alreadyHasLink ? '' : `\n\nFor setup instructions, see: ${JEKYLL_GUIDE}`;
     const message = detail
-      ? `${detail}${suffix}`
-      : `Failed to start Jekyll preview.\n\nFor setup instructions, see: ${JEKYLL_GUIDE}`;
+      ? `${detail}${suffix}${logTail}`
+      : `Failed to start Jekyll preview.\n\nFor setup instructions, see: ${JEKYLL_GUIDE}${logTail}`;
     previewState.update((state) => ({
       ...state,
       mode: 'instant',
