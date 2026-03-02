@@ -1,7 +1,12 @@
 import { tauriInvoke } from '$lib/tauri/runtime';
 
-export async function startJekyll(repoPath: string): Promise<string> {
-  return tauriInvoke<string>('start_jekyll', { repoPath });
+export type StartJekyllResult = {
+  preview_url: string;
+  livereload_enabled: boolean;
+};
+
+export async function startJekyll(repoPath: string): Promise<StartJekyllResult> {
+  return tauriInvoke<StartJekyllResult>('start_jekyll', { repoPath });
 }
 
 export async function stopJekyll(): Promise<void> {

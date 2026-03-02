@@ -1,4 +1,5 @@
 use once_cell::sync::Lazy;
+use serde::Serialize;
 use std::fs::{self, OpenOptions};
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -52,11 +53,18 @@ struct ActiveJekyll {
     repo_path: PathBuf,
     port: u16,
     temp_config_path: Option<PathBuf>,
+    livereload_enabled: bool,
 }
 
 struct StartedJekyll {
     child: Child,
     temp_config_path: Option<PathBuf>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct JekyllStartResult {
+    pub preview_url: String,
+    pub livereload_enabled: bool,
 }
 
 static ACTIVE_JEKYLL: Lazy<Mutex<Option<ActiveJekyll>>> = Lazy::new(|| Mutex::new(None));
@@ -390,7 +398,7 @@ fn bundle_install(repo_path: &Path) -> Result<(), String> {
     )))
 }
 
-fn start_jekyll_process(repo_path: &Path, port: u16) -> Result<StartedJekyll, String> {
+fn start_jekyll_process(repo_path: &Path, port: u16, livereload_enabled: bool) -> Result<StartedJekyll, String> {
     let gemfile_exists = repo_path.join("Gemfile").exists();
     let has_bundle = shell_command_exists("bundle");
     let use_bundle = gemfile_exists && has_bundle;
@@ -420,9 +428,13 @@ fn start_jekyll_process(repo_path: &Path, port: u16) -> Result<StartedJekyll, St
         temp_config_path.display()
     ));
 
-    let jekyll_args = format!(
-        "serve --host {PREVIEW_HOST} --port {port} {config_flag} --drafts --livereload --livereload-port {livereload_port}"
-    );
+    let jekyll_args = if livereload_enabled {
+        format!(
+            "serve --host {PREVIEW_HOST} --port {port} {config_flag} --drafts --livereload --livereload-port {livereload_port}"
+        )
+    } else {
+        format!("serve --host {PREVIEW_HOST} --port {port} {config_flag} --drafts")
+    };
     let shell_cmd = if use_bundle {
         format!("bundle exec jekyll {jekyll_args}")
     } else {
@@ -449,7 +461,7 @@ fn start_jekyll_process(repo_path: &Path, port: u16) -> Result<StartedJekyll, St
 }
 
 #[tauri::command]
-pub fn start_jekyll(repo_path: String) -> Result<String, String> {
+pub fn start_jekyll(repo_path: String) -> Result<JekyllStartResult, String> {
     let repo_path = PathBuf::from(repo_path);
     if !repo_path.exists() {
         return Err("Repository path does not exist.".to_string());
@@ -464,7 +476,10 @@ pub fn start_jekyll(repo_path: String) -> Result<String, String> {
             if state.repo_path == repo_path {
                 if state.child.try_wait().map_err(|err| format!("failed checking Jekyll process: {err}"))?.is_none() {
                     log_preview("reusing existing Jekyll process");
-                    return Ok(format!("http://{PREVIEW_HOST}:{}", state.port));
+                    return Ok(JekyllStartResult {
+                        preview_url: format!("http://{PREVIEW_HOST}:{}", state.port),
+                        livereload_enabled: state.livereload_enabled,
+                    });
                 }
             }
 
@@ -484,7 +499,7 @@ pub fn start_jekyll(repo_path: String) -> Result<String, String> {
     let StartedJekyll {
         mut child,
         temp_config_path,
-    } = start_jekyll_process(&repo_path, port)?;
+    } = start_jekyll_process(&repo_path, port, true)?;
 
     match wait_for_preview_ready(&mut child, port) {
         Ok(_) => {
@@ -497,15 +512,66 @@ pub fn start_jekyll(repo_path: String) -> Result<String, String> {
                 repo_path,
                 port,
                 temp_config_path,
+                livereload_enabled: true,
             });
             log_preview(&format!("Jekyll preview ready at {preview_url}"));
-            Ok(preview_url)
+            Ok(JekyllStartResult {
+                preview_url,
+                livereload_enabled: true,
+            })
         }
-        Err(err) => {
+        Err(primary_err) => {
             let _ = kill_process(&mut child);
             cleanup_temp_config(temp_config_path.as_deref());
-            log_preview(&format!("Jekyll failed to become ready: {err}"));
-            Err(err)
+
+            #[cfg(target_os = "windows")]
+            let should_retry_without_livereload = primary_err.contains("exited unexpectedly")
+                || primary_err.contains("did not become ready in time");
+            #[cfg(not(target_os = "windows"))]
+            let should_retry_without_livereload = false;
+
+            if should_retry_without_livereload {
+                log_preview("initial Jekyll launch with livereload failed; retrying without livereload");
+
+                let StartedJekyll {
+                    mut child,
+                    temp_config_path,
+                } = start_jekyll_process(&repo_path, port, false)?;
+
+                match wait_for_preview_ready(&mut child, port) {
+                    Ok(_) => {
+                        let preview_url = format!("http://{PREVIEW_HOST}:{port}");
+                        let mut active = ACTIVE_JEKYLL
+                            .lock()
+                            .map_err(|_| "failed to lock preview state".to_string())?;
+                        *active = Some(ActiveJekyll {
+                            child,
+                            repo_path,
+                            port,
+                            temp_config_path,
+                            livereload_enabled: false,
+                        });
+                        log_preview(&format!(
+                            "Jekyll preview ready at {preview_url} (livereload disabled fallback)"
+                        ));
+                        return Ok(JekyllStartResult {
+                            preview_url,
+                            livereload_enabled: false,
+                        });
+                    }
+                    Err(fallback_err) => {
+                        let _ = kill_process(&mut child);
+                        cleanup_temp_config(temp_config_path.as_deref());
+                        log_preview(&format!(
+                            "Jekyll fallback without livereload failed: {fallback_err}"
+                        ));
+                        return Err(fallback_err);
+                    }
+                }
+            }
+
+            log_preview(&format!("Jekyll failed to become ready: {primary_err}"));
+            Err(primary_err)
         }
     }
 }

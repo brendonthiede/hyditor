@@ -16,6 +16,7 @@ export const previewState = writable<{
   viewport: { width: number; height: number };
   viewportPreset: Preset;
   jekyllBaseUrl: string | null;
+  jekyllLivereloadEnabled: boolean;
   repoPath: string | null;
   sitePermalink: string;
   loading: boolean;
@@ -25,6 +26,7 @@ export const previewState = writable<{
   viewport: PRESETS.desktop,
   viewportPreset: 'desktop',
   jekyllBaseUrl: null,
+  jekyllLivereloadEnabled: true,
   repoPath: null,
   sitePermalink: 'date',
   loading: false,
@@ -60,6 +62,7 @@ export async function setPreviewMode(
       loading: false,
       error: null,
       jekyllBaseUrl: null,
+      jekyllLivereloadEnabled: true,
       repoPath: null,
       sitePermalink: 'date'
     }));
@@ -73,6 +76,7 @@ export async function setPreviewMode(
       loading: false,
       error: 'Open a repository before starting full preview.',
       jekyllBaseUrl: null,
+      jekyllLivereloadEnabled: true,
       repoPath: null
     }));
     return;
@@ -85,7 +89,7 @@ export async function setPreviewMode(
   }));
 
   try {
-    const [baseUrl, sitePermalink] = await Promise.all([
+    const [{ preview_url: baseUrl, livereload_enabled: livereloadEnabled }, sitePermalink] = await Promise.all([
       startJekyll(repoPath),
       loadSitePermalink(repoPath)
     ]);
@@ -93,6 +97,7 @@ export async function setPreviewMode(
       ...state,
       mode: 'jekyll',
       jekyllBaseUrl: baseUrl,
+      jekyllLivereloadEnabled: livereloadEnabled,
       repoPath,
       sitePermalink,
       loading: false,
@@ -124,6 +129,7 @@ export async function setPreviewMode(
       ...state,
       mode: 'instant',
       jekyllBaseUrl: null,
+      jekyllLivereloadEnabled: true,
       repoPath: null,
       loading: false,
       error: message
@@ -141,6 +147,7 @@ export async function stopJekyllPreview(): Promise<void> {
     ...state,
     mode: 'instant',
     jekyllBaseUrl: null,
+    jekyllLivereloadEnabled: true,
     repoPath: null,
     loading: false
   }));

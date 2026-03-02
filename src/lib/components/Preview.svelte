@@ -5,7 +5,7 @@
   import { writeText as writeClipboardText } from '@tauri-apps/plugin-clipboard-manager';
   import { openPath, openUrl } from '@tauri-apps/plugin-opener';
   import ViewportToolbar from '$lib/components/ViewportToolbar.svelte';
-  import { editorState } from '$lib/stores/editor';
+  import { editorState, lastSavedAt } from '$lib/stores/editor';
   import { previewState, stopJekyllPreview } from '$lib/stores/preview';
   import { getPreviewLogDirectory } from '$lib/tauri/preview';
   import { layout } from '$lib/stores/layout';
@@ -105,6 +105,7 @@
   let debouncedIframeUrl: string | null = null;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   const IFRAME_RELOAD_DELAY_MS = 1000;
+  let fallbackRefreshNonce = 0;
 
   function applyIframeUrl(url: string | null): void {
     if (debounceTimer !== null) {
@@ -123,6 +124,18 @@
   }
 
   $: applyIframeUrl(iframeUrl);
+
+  // Without livereload (fallback mode), force iframe refresh after each save.
+  $: if ($previewState.mode === 'jekyll' && !$previewState.jekyllLivereloadEnabled && $lastSavedAt > 0) {
+    fallbackRefreshNonce = $lastSavedAt;
+  }
+
+  $: iframeSrc = (() => {
+    if (!debouncedIframeUrl) return null;
+    if ($previewState.jekyllLivereloadEnabled) return debouncedIframeUrl;
+    const separator = debouncedIframeUrl.includes('?') ? '&' : '?';
+    return `${debouncedIframeUrl}${separator}hyditor_refresh=${fallbackRefreshNonce}`;
+  })();
 
   // Push instant-mode content to the pop-out window whenever it changes.
   $: if ($layout.previewPoppedOut && $previewState.mode === 'instant') {
@@ -209,9 +222,9 @@
       class="viewport"
       style={`width: ${$previewState.viewport.width}px; height: ${$previewState.viewport.height}px;`}
     >
-      {#if $previewState.mode === 'jekyll' && debouncedIframeUrl}
-        {#key debouncedIframeUrl}
-          <iframe title="Jekyll preview" src={debouncedIframeUrl}></iframe>
+      {#if $previewState.mode === 'jekyll' && iframeSrc}
+        {#key iframeSrc}
+          <iframe title="Jekyll preview" src={iframeSrc}></iframe>
         {/key}
       {:else}
         <article>
