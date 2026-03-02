@@ -20,6 +20,8 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const PREVIEW_HOST: &str = "127.0.0.1";
 const PREVIEW_BOOT_TIMEOUT: Duration = Duration::from_secs(60);
 const PREVIEW_LOG_FILE_NAME: &str = "preview.log";
+const PREVIEW_TEMP_CONFIG_DIR_NAME: &str = "preview-config";
+const PREVIEW_TEMP_CONFIG_PREFIX: &str = "preview-override-";
 
 /// URL to the Jekyll prerequisites guide in the project README.
 const JEKYLL_SETUP_GUIDE: &str =
@@ -49,6 +51,12 @@ struct ActiveJekyll {
     child: Child,
     repo_path: PathBuf,
     port: u16,
+    temp_config_path: Option<PathBuf>,
+}
+
+struct StartedJekyll {
+    child: Child,
+    temp_config_path: Option<PathBuf>,
 }
 
 static ACTIVE_JEKYLL: Lazy<Mutex<Option<ActiveJekyll>>> = Lazy::new(|| Mutex::new(None));
@@ -58,6 +66,13 @@ fn resolve_preview_log_path() -> Option<PathBuf> {
     base.push("hyditor");
     base.push("logs");
     base.push(PREVIEW_LOG_FILE_NAME);
+    Some(base)
+}
+
+fn resolve_preview_temp_config_dir() -> Option<PathBuf> {
+    let mut base = dirs::cache_dir().or_else(dirs::data_local_dir)?;
+    base.push("hyditor");
+    base.push(PREVIEW_TEMP_CONFIG_DIR_NAME);
     Some(base)
 }
 
@@ -198,6 +213,98 @@ fn kill_process(child: &mut Child) -> io::Result<()> {
     Ok(())
 }
 
+fn cleanup_temp_config(path: Option<&Path>) {
+    let Some(path) = path else {
+        return;
+    };
+
+    match fs::remove_file(path) {
+        Ok(()) => log_preview(&format!("removed temporary preview config {}", path.display())),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+        Err(err) => log_preview(&format!("failed to remove temporary preview config {}: {err}", path.display())),
+    }
+}
+
+fn cleanup_stale_temp_configs() {
+    let Some(dir) = resolve_preview_temp_config_dir() else {
+        return;
+    };
+
+    let entries = match fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return,
+        Err(err) => {
+            log_preview(&format!(
+                "failed to read preview temp config directory {}: {err}",
+                dir.display()
+            ));
+            return;
+        }
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+
+        if !name.starts_with(PREVIEW_TEMP_CONFIG_PREFIX) || !name.ends_with(".yml") {
+            continue;
+        }
+
+        cleanup_temp_config(Some(path.as_path()));
+    }
+}
+
+fn shell_quote(value: &str) -> String {
+    #[cfg(target_os = "windows")]
+    {
+        format!("'{}'", value.replace('\'', "''"))
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        format!("'{}'", value.replace('\'', "'\\''"))
+    }
+}
+
+fn create_temp_preview_config(repo_path: &Path, port: u16) -> Result<(PathBuf, String), String> {
+    let temp_dir = resolve_preview_temp_config_dir()
+        .ok_or_else(|| "failed to resolve preview temp config directory".to_string())?;
+    fs::create_dir_all(&temp_dir)
+        .map_err(|err| format!("failed to create preview temp config directory: {err}"))?;
+
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+    let file_name = format!("{PREVIEW_TEMP_CONFIG_PREFIX}{port}-{ts}.yml");
+    let file_path = temp_dir.join(&file_name);
+
+    #[cfg(target_os = "windows")]
+    let baseurl = "/";
+    #[cfg(not(target_os = "windows"))]
+    let baseurl = "";
+
+    let content = format!("baseurl: \"{baseurl}\"\n");
+    fs::write(&file_path, content)
+        .map_err(|err| format!("failed to write preview temp config: {err}"))?;
+
+    let override_str = file_path.to_string_lossy().to_string();
+    let config_flag = if repo_path.join("_config.yml").exists() {
+        let base_config = repo_path.join("_config.yml").to_string_lossy().to_string();
+        format!("--config {}", shell_quote(&format!("{base_config},{override_str}")))
+    } else {
+        format!("--config {}", shell_quote(&override_str))
+    };
+
+    log_preview(&format!(
+        "created temporary preview config {}",
+        file_path.display()
+    ));
+    Ok((file_path, config_flag))
+}
+
 
 /// Run a shell command via the platform-appropriate shell.
 ///
@@ -283,7 +390,7 @@ fn bundle_install(repo_path: &Path) -> Result<(), String> {
     )))
 }
 
-fn start_jekyll_process(repo_path: &Path, port: u16) -> Result<Child, String> {
+fn start_jekyll_process(repo_path: &Path, port: u16) -> Result<StartedJekyll, String> {
     let gemfile_exists = repo_path.join("Gemfile").exists();
     let has_bundle = shell_command_exists("bundle");
     let use_bundle = gemfile_exists && has_bundle;
@@ -307,8 +414,14 @@ fn start_jekyll_process(repo_path: &Path, port: u16) -> Result<Child, String> {
     }
 
     let livereload_port = find_free_port()?;
+    let (temp_config_path, config_flag) = create_temp_preview_config(repo_path, port)?;
+    log_preview(&format!(
+        "current launch temp config path: {}",
+        temp_config_path.display()
+    ));
+
     let jekyll_args = format!(
-        "serve --host {PREVIEW_HOST} --port {port} --baseurl \"\" --drafts --livereload --livereload-port {livereload_port}"
+        "serve --host {PREVIEW_HOST} --port {port} {config_flag} --drafts --livereload --livereload-port {livereload_port}"
     );
     let shell_cmd = if use_bundle {
         format!("bundle exec jekyll {jekyll_args}")
@@ -323,10 +436,16 @@ fn start_jekyll_process(repo_path: &Path, port: u16) -> Result<Child, String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|err| jekyll_setup_error(&format!("Failed to launch Jekyll preview process: {err}")))?;
+        .map_err(|err| {
+            cleanup_temp_config(Some(temp_config_path.as_path()));
+            jekyll_setup_error(&format!("Failed to launch Jekyll preview process: {err}"))
+        })?;
 
     attach_jekyll_output_logging(&mut child);
-    Ok(child)
+    Ok(StartedJekyll {
+        child,
+        temp_config_path: Some(temp_config_path),
+    })
 }
 
 #[tauri::command]
@@ -350,8 +469,11 @@ pub fn start_jekyll(repo_path: String) -> Result<String, String> {
             }
 
             let _ = kill_process(&mut state.child);
+            cleanup_temp_config(state.temp_config_path.as_deref());
             *active = None;
         }
+
+        cleanup_stale_temp_configs();
     }
 
     let port = find_free_port()?;
@@ -359,7 +481,10 @@ pub fn start_jekyll(repo_path: String) -> Result<String, String> {
         "starting Jekyll for {} on port {port}",
         repo_path.to_string_lossy()
     ));
-    let mut child = start_jekyll_process(&repo_path, port)?;
+    let StartedJekyll {
+        mut child,
+        temp_config_path,
+    } = start_jekyll_process(&repo_path, port)?;
 
     match wait_for_preview_ready(&mut child, port) {
         Ok(_) => {
@@ -371,12 +496,14 @@ pub fn start_jekyll(repo_path: String) -> Result<String, String> {
                 child,
                 repo_path,
                 port,
+                temp_config_path,
             });
             log_preview(&format!("Jekyll preview ready at {preview_url}"));
             Ok(preview_url)
         }
         Err(err) => {
             let _ = kill_process(&mut child);
+            cleanup_temp_config(temp_config_path.as_deref());
             log_preview(&format!("Jekyll failed to become ready: {err}"));
             Err(err)
         }
@@ -392,6 +519,7 @@ pub fn stop_jekyll() -> Result<(), String> {
     if let Some(state) = active.as_mut() {
         kill_process(&mut state.child)
             .map_err(|err| format!("failed to stop Jekyll preview process: {err}"))?;
+        cleanup_temp_config(state.temp_config_path.as_deref());
     }
 
     *active = None;
@@ -477,5 +605,10 @@ mod tests {
 
         let tail = read_log_tail_from_path(&log_path, 50).expect("tail should read");
         assert!(tail.is_empty());
+    }
+
+    #[test]
+    fn temp_config_dir_name_constant_is_stable() {
+        assert_eq!(PREVIEW_TEMP_CONFIG_DIR_NAME, "preview-config");
     }
 }
