@@ -105,7 +105,22 @@
   let debouncedIframeUrl: string | null = null;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   const IFRAME_RELOAD_DELAY_MS = 1000;
+  const FALLBACK_REFRESH_DELAY_MS = 1200;
   let fallbackRefreshNonce = 0;
+  let fallbackRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function refreshPreview(): void {
+    if ($previewState.mode !== 'jekyll') {
+      return;
+    }
+
+    if (fallbackRefreshTimer !== null) {
+      clearTimeout(fallbackRefreshTimer);
+      fallbackRefreshTimer = null;
+    }
+
+    fallbackRefreshNonce = Date.now();
+  }
 
   function applyIframeUrl(url: string | null): void {
     if (debounceTimer !== null) {
@@ -125,9 +140,21 @@
 
   $: applyIframeUrl(iframeUrl);
 
-  // Without livereload (fallback mode), force iframe refresh after each save.
+  // Without livereload (fallback mode), refresh after a short delay to allow
+  // Jekyll to finish rebuilding before the iframe reloads.
   $: if ($previewState.mode === 'jekyll' && !$previewState.jekyllLivereloadEnabled && $lastSavedAt > 0) {
-    fallbackRefreshNonce = $lastSavedAt;
+    if (fallbackRefreshTimer !== null) {
+      clearTimeout(fallbackRefreshTimer);
+      fallbackRefreshTimer = null;
+    }
+    const savedAt = $lastSavedAt;
+    fallbackRefreshTimer = setTimeout(() => {
+      fallbackRefreshNonce = savedAt;
+      fallbackRefreshTimer = null;
+    }, FALLBACK_REFRESH_DELAY_MS);
+  } else if (fallbackRefreshTimer !== null) {
+    clearTimeout(fallbackRefreshTimer);
+    fallbackRefreshTimer = null;
   }
 
   $: iframeSrc = (() => {
@@ -185,6 +212,7 @@
   onDestroy(() => {
     void stopJekyllPreview();
     if (debounceTimer !== null) clearTimeout(debounceTimer);
+    if (fallbackRefreshTimer !== null) clearTimeout(fallbackRefreshTimer);
     if (diagnosticsCopyTimer !== null) clearTimeout(diagnosticsCopyTimer);
     if (logFolderOpenTimer !== null) clearTimeout(logFolderOpenTimer);
     unlistenPopupReady?.();
@@ -195,7 +223,7 @@
 <svelte:window on:keydown={onKeyDown} />
 
 <section class="preview" class:fullscreen={$layout.previewFullscreen}>
-  <ViewportToolbar />
+  <ViewportToolbar onRefresh={refreshPreview} />
   {#if $previewState.error}
     <div class="error">
       <div class="error-actions">

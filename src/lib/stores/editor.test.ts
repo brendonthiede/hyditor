@@ -83,6 +83,17 @@ describe('editor store', () => {
       const afterSave = get(lastSavedAt);
       expect(afterSave).toBeGreaterThan(0);
     });
+
+    it('supports explicitly saved content snapshots', () => {
+      setCurrentFileContent('test.md', 'original');
+      updateCurrentContent('newer unsaved edit');
+
+      markCurrentContentSaved('older saved edit');
+
+      const after = get(editorState);
+      expect(after.originalContent).toBe('older saved edit');
+      expect(after.currentContent).toBe('newer unsaved edit');
+    });
   });
 
   describe('resetEditorState', () => {

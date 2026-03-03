@@ -133,14 +133,16 @@
 
     if (currentFile && currentContent !== originalContent) {
       saveTimer = setTimeout(async () => {
-        if (equalsIgnoringLineEndings(currentContent, originalContent)) {
-          markCurrentContentSaved();
+        const contentToSave = currentContent;
+
+        if (equalsIgnoringLineEndings(contentToSave, originalContent)) {
+          markCurrentContentSaved(contentToSave);
           return;
         }
 
         try {
-          await saveRepoFile(currentFile, applyLineEnding(currentContent, lineEnding));
-          markCurrentContentSaved();
+          await saveRepoFile(currentFile, applyLineEnding(contentToSave, lineEnding));
+          markCurrentContentSaved(contentToSave);
         } catch {
           return;
         }

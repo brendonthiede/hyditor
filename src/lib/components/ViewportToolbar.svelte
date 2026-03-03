@@ -3,6 +3,8 @@
   import { layout } from '$lib/stores/layout';
   import { openPreviewPopup, closePreviewPopup } from '$lib/tauri/window';
 
+  export let onRefresh: () => void = () => {};
+
   async function handlePopOut(): Promise<void> {
     if ($layout.previewPoppedOut) {
       await closePreviewPopup();
@@ -43,6 +45,14 @@
 
   <!-- Panel controls -->
   <div class="icon-group">
+    <button
+      class="icon-btn"
+      title="Refresh preview (Full Preview/Jekyll)"
+      on:click={onRefresh}
+    >
+      ↻
+    </button>
+
     <button
       class="icon-btn"
       title={$layout.previewPosition === 'side' ? 'Move preview below editor' : 'Move preview beside editor'}

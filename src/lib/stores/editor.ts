@@ -41,8 +41,11 @@ export function setCurrentFileContent(path: string, content: string): void {
   });
 }
 
-export function markCurrentContentSaved(): void {
-  editorState.update((state) => ({ ...state, originalContent: state.currentContent }));
+export function markCurrentContentSaved(savedContent?: string): void {
+  editorState.update((state) => ({
+    ...state,
+    originalContent: savedContent ?? state.currentContent
+  }));
   lastSavedAt.set(Date.now());
 }
 
