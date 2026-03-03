@@ -44,10 +44,12 @@
     updateCurrentContent
   } from '$lib/stores/editor';
   import { saveRepoFile } from '$lib/stores/repo';
+  import { applyLineEnding, equalsIgnoringLineEndings } from '$lib/utils/lineEndings';
 
   $: currentFile = $editorState.currentFile;
   $: currentContent = $editorState.currentContent;
   $: originalContent = $editorState.originalContent;
+  $: lineEnding = $editorState.lineEnding;
   $: fileName = currentFile ? currentFile.split('/').pop() ?? currentFile : null;
   $: directoryPath = currentFile && fileName ? currentFile.slice(0, Math.max(0, currentFile.length - fileName.length - 1)) : '';
 
@@ -131,8 +133,13 @@
 
     if (currentFile && currentContent !== originalContent) {
       saveTimer = setTimeout(async () => {
+        if (equalsIgnoringLineEndings(currentContent, originalContent)) {
+          markCurrentContentSaved();
+          return;
+        }
+
         try {
-          await saveRepoFile(currentFile, currentContent);
+          await saveRepoFile(currentFile, applyLineEnding(currentContent, lineEnding));
           markCurrentContentSaved();
         } catch {
           return;

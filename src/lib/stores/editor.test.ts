@@ -27,6 +27,7 @@ describe('editor store', () => {
       expect(state.currentContent).toBe('modified');
       expect(state.currentFile).toBe('test.md');
       expect(state.originalContent).toBe('original');
+      expect(state.lineEnding).toBe('lf');
     });
 
     it('does not change originalContent', () => {
@@ -46,6 +47,14 @@ describe('editor store', () => {
       expect(state.currentFile).toBe('docs/guide.md');
       expect(state.currentContent).toBe('# Guide');
       expect(state.originalContent).toBe('# Guide');
+      expect(state.lineEnding).toBe('lf');
+    });
+
+    it('detects CRLF line endings from file content', () => {
+      setCurrentFileContent('docs/guide.md', '# Guide\r\n\r\nBody\r\n');
+
+      const state = get(editorState);
+      expect(state.lineEnding).toBe('crlf');
     });
   });
 
@@ -62,6 +71,7 @@ describe('editor store', () => {
       const after = get(editorState);
       expect(after.originalContent).toBe('edited version');
       expect(after.currentContent).toBe('edited version');
+      expect(after.lineEnding).toBe('lf');
     });
 
     it('updates lastSavedAt timestamp', () => {
@@ -85,6 +95,7 @@ describe('editor store', () => {
       expect(state.currentFile).toBeNull();
       expect(state.currentContent).toBe(INITIAL_CONTENT);
       expect(state.originalContent).toBe(INITIAL_CONTENT);
+      expect(state.lineEnding).toBe('lf');
     });
 
     it('clears the file tree', () => {

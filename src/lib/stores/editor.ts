@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store';
+import { detectLineEnding, type LineEnding } from '$lib/utils/lineEndings';
 
 /**
  * Timestamp (ms) of the last successful file save.
@@ -17,10 +18,12 @@ export const editorState = writable<{
   currentFile: string | null;
   currentContent: string;
   originalContent: string;
+  lineEnding: LineEnding;
 }>({
   currentFile: null,
   currentContent: '# Welcome to Hyditor\n\nStart editing your Jekyll content.',
-  originalContent: '# Welcome to Hyditor\n\nStart editing your Jekyll content.'
+  originalContent: '# Welcome to Hyditor\n\nStart editing your Jekyll content.',
+  lineEnding: 'lf'
 });
 
 const initialEditorContent = '# Welcome to Hyditor\n\nStart editing your Jekyll content.';
@@ -33,7 +36,8 @@ export function setCurrentFileContent(path: string, content: string): void {
   editorState.set({
     currentFile: path,
     currentContent: content,
-    originalContent: content
+    originalContent: content,
+    lineEnding: detectLineEnding(content)
   });
 }
 
@@ -47,6 +51,7 @@ export function resetEditorState(): void {
   editorState.set({
     currentFile: null,
     currentContent: initialEditorContent,
-    originalContent: initialEditorContent
+    originalContent: initialEditorContent,
+    lineEnding: 'lf'
   });
 }

@@ -1,5 +1,6 @@
 use git2::{DiffOptions, Repository, StatusOptions};
 use serde::Serialize;
+use std::path::Path;
 
 #[derive(Debug, Serialize)]
 pub struct GitStatusEntry {
@@ -22,6 +23,45 @@ pub(crate) fn is_whitespace_only_diff(repo: &Repository, path: &str) -> bool {
         Ok(diff) => diff.deltas().count() == 0,
         Err(_) => false,
     }
+}
+
+fn normalize_repo_relative_path(path: &str) -> String {
+    path.replace('\\', "/")
+}
+
+fn normalize_line_endings(content: &str) -> String {
+    content.replace("\r\n", "\n").replace('\r', "\n")
+}
+
+fn read_index_text_for_path(repo: &Repository, path: &str) -> Option<String> {
+    let index = repo.index().ok()?;
+    let entry = index.get_path(Path::new(path), 0)?;
+    let blob = repo.find_blob(entry.id).ok()?;
+    let text = std::str::from_utf8(blob.content()).ok()?;
+    Some(text.to_string())
+}
+
+fn read_workdir_text_for_path(repo: &Repository, path: &str) -> Option<String> {
+    let workdir = repo.workdir()?;
+    std::fs::read_to_string(workdir.join(path)).ok()
+}
+
+pub(crate) fn is_line_ending_only_diff(repo: &Repository, path: &str) -> bool {
+    let normalized_path = normalize_repo_relative_path(path);
+    let index_text = match read_index_text_for_path(repo, &normalized_path) {
+        Some(content) => content,
+        None => return false,
+    };
+    let workdir_text = match read_workdir_text_for_path(repo, &normalized_path) {
+        Some(content) => content,
+        None => return false,
+    };
+
+    if index_text == workdir_text {
+        return false;
+    }
+
+    normalize_line_endings(&index_text) == normalize_line_endings(&workdir_text)
 }
 
 fn derive_status_label(flags: git2::Status) -> String {
@@ -75,7 +115,8 @@ pub fn git_status(repo_path: String) -> Result<Vec<GitStatusEntry>, String> {
         // modifications that all disappear when whitespace is ignored.
         let whitespace_only = unstaged
             && flags.is_wt_modified()
-            && is_whitespace_only_diff(&repo, &path);
+            && (is_whitespace_only_diff(&repo, &path)
+                || is_line_ending_only_diff(&repo, &path));
         result.push(GitStatusEntry {
             path,
             status: derive_status_label(flags),
@@ -118,6 +159,19 @@ pub fn git_diff_file(repo_path: String, file_path: String) -> Result<String, Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_line_endings_converts_crlf_and_cr_to_lf() {
+        assert_eq!(normalize_line_endings("a\r\nb\rc\n"), "a\nb\nc\n");
+    }
+
+    #[test]
+    fn normalize_repo_relative_path_converts_backslashes() {
+        assert_eq!(
+            normalize_repo_relative_path("content\\posts\\test.md"),
+            "content/posts/test.md"
+        );
+    }
 
     #[test]
     fn derive_status_label_untracked() {

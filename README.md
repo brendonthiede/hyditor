@@ -265,6 +265,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ Single Publish action: `git_publish` backend command stages eligible files → commits → pushes in one atomic IPC call; the GitPanel "Publish" button uses an auto-generated commit message (`"Changes made using Hyditor on M/D/YYYY"`) when no change notes are provided; if push fails after a successful commit the error includes the commit hash for recovery
 - ✅ Dead code cleanup: removed `git_unstage` Rust command, `unstage`/`stage`/`commit`/`push` Tauri wrappers (superseded by atomic `git_publish`), `stageFiles`/`unstageFiles`/`commitChanges`/`pushChanges` dead store functions; folded `branchUiState` into `branchState` to eliminate the separate store
 - ✅ Pinned panel headers: the left sidebar (Files/Search/Publish) uses a flex column layout so the blade tab selector, filter inputs, and search input remain fixed at the top while long file lists and search results scroll independently; the Publish panel pins its header and publish controls at the top/bottom with only the changed-files list scrolling
+- ✅ Windows line-ending resilience: editor autosave now preserves each file’s original line-ending style (LF vs CRLF) to prevent no-op rewrites on refresh/open; Git status additionally classifies line-ending-only modifications as whitespace-only so users are not prompted to publish/revert purely technical newline churn
 
 ## Contributor Workflow
 
