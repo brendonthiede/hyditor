@@ -253,6 +253,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ Repo filter autofocus: when the repository selection screen opens, the filter input is automatically focused so the user can start typing immediately without clicking it first
 - ✅ "Copy repo path" button in the toolbar copies the local cache path of the active repository to the clipboard; the button briefly shows "Path copied!" as feedback, and its tooltip always shows the full path — lets users jump directly to the repo in their preferred code editor or terminal
 - ✅ Redesigned Publish panel (GitPanel): replaced staged/unstaged sections with a flat changed-files list; each file has a ↩ "Revert" button (with confirmation dialog) and a ⛔ "Do not publish" toggle to exclude files from the next publish; the panel auto-refreshes git status after every file save (debounced 1 s via `lastSavedAt` store) and polls every 5 s for external changes; the toolbar git badge now shows a simple "N changed files" count; backend `git_revert_files` Rust command reverts tracked files via HEAD checkout and removes untracked files
+- ✅ Publish-panel revert reliability: backend `git_revert_files` now correctly handles both tracked modified files (restored from `HEAD`) and staged newly-added files (`INDEX_NEW`, removed from both disk and index); regression tests `git_revert_files_restores_tracked_modified_file` and `git_revert_files_removes_staged_new_file` added in `src-tauri/src/git/commit.rs`
 - ✅ Preview viewport active indicator: the currently selected viewport preset button (Desktop / Tablet / Mobile) is highlighted with the active style so users can see which size is selected at a glance
 - ✅ Jekyll preview file navigation: the preview iframe is wrapped in a `{#key}` block so clicking a different file in the file tree always navigates to the correct post/draft page — fixes a regression where the iframe `src` attribute update did not trigger navigation in WebKit
 - ✅ Simplified BranchSelector: removed "Create Branch" input/button and "Refresh" button; the component now contains only the branch dropdown; `create_branch` Tauri command, `createBranch` IPC wrapper, and `createRepoBranch` store function removed from codebase
@@ -364,4 +365,4 @@ For in-app UI use (e.g. the auth screen), place SVG or PNG assets under `src/lib
 
 ## Next Work
 
-- Define next roadmap item
+- Improve Publish panel error visibility so transient revert/publish failures are not cleared too quickly by background status refresh.
