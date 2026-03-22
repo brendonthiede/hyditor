@@ -61,6 +61,14 @@
   const filterText = writable('');
   const showAll = writable(false);
 
+  interface ContextMenu {
+    dirPath: string;
+    dirAbsPath: string;
+    x: number;
+    y: number;
+  }
+  const contextMenu = writable<ContextMenu | null>(null);
+
   /**
    * When a search query is active every directory should be expanded so the
    * user can see matching results without having to manually open folders.
@@ -75,8 +83,10 @@
 <script lang="ts">
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import { editorState, fileTree } from '$lib/stores/editor';
-  import { openRepoFile } from '$lib/stores/repo';
+  import { activeRepo, openRepoFile } from '$lib/stores/repo';
   import { layout } from '$lib/stores/layout';
+  import { copyFileIntoRepo, readTree } from '$lib/tauri/fs';
+  import { open as openFilePicker } from '@tauri-apps/plugin-dialog';
   import SearchPanel from '$lib/components/SearchPanel.svelte';
   import GitPanel from '$lib/components/GitPanel.svelte';
 
@@ -184,6 +194,32 @@
     return filtered;
   }
 
+  async function addFileToDir(dirPath: string, dirAbsPath: string): Promise<void> {
+    contextMenu.set(null);
+    const selected = await openFilePicker({ multiple: false, directory: false });
+    if (!selected) return;
+    const srcPath = typeof selected === 'string' ? selected : selected[0];
+    if (!srcPath) return;
+    try {
+      await copyFileIntoRepo(srcPath, dirAbsPath);
+      const repo = $activeRepo;
+      if (repo) {
+        const tree = await readTree(repo.localPath);
+        fileTree.set(tree);
+      }
+    } catch (err) {
+      console.error('Failed to copy file:', err);
+    }
+  }
+
+  function onDirContextMenu(e: MouseEvent, dirPath: string): void {
+    const repo = $activeRepo;
+    if (!repo) return;
+    e.preventDefault();
+    const dirAbsPath = `${repo.localPath}/${dirPath}`;
+    contextMenu.set({ dirPath, dirAbsPath, x: e.clientX, y: e.clientY });
+  }
+
   $: isRoot = nodes === undefined;
   $: filteredItems = isRoot ? applyFilters($fileTree, $showAll, $filterText) : [];
   $: tree = isRoot ? buildTree(filteredItems) : [];
@@ -197,6 +233,20 @@
       ).length
     : 0;
 </script>
+
+{#if $contextMenu}
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div
+    class="ctx-backdrop"
+    on:click={() => contextMenu.set(null)}
+    on:contextmenu|preventDefault={() => contextMenu.set(null)}
+  />
+  <div class="ctx-menu" style="left: {$contextMenu.x}px; top: {$contextMenu.y}px;">
+    <button on:click={() => addFileToDir($contextMenu!.dirPath, $contextMenu!.dirAbsPath)}>
+      Add file here…
+    </button>
+  </div>
+{/if}
 
 {#if isRoot}
   <section class="file-tree">
@@ -279,7 +329,11 @@
     {#each displayNodes as node (node.path)}
       <li>
         {#if node.is_dir}
-          <button class="dir-toggle" on:click={() => toggleDir(node.path)}>
+          <button
+            class="dir-toggle"
+            on:click={() => toggleDir(node.path)}
+            on:contextmenu={(e) => onDirContextMenu(e, node.path)}
+          >
             <span class="chevron" class:collapsed={$effectiveCollapsedDirs.has(node.path)}>▶</span>
             <strong>{node.name}</strong>
           </button>
@@ -504,5 +558,38 @@
 
   strong {
     font-weight: 600;
+  }
+
+  :global(.ctx-backdrop) {
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+  }
+
+  :global(.ctx-menu) {
+    position: fixed;
+    z-index: 1000;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 0.25rem 0;
+    min-width: 160px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  :global(.ctx-menu button) {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0.4rem 0.75rem;
+  }
+
+  :global(.ctx-menu button:hover) {
+    background: #21262d;
   }
 </style>

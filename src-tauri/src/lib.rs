@@ -8,6 +8,7 @@ pub mod preview;
 pub fn run() {
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_stronghold::Builder::new(|_pass| vec![]).build());
 
@@ -39,6 +40,7 @@ pub fn run() {
             fs::scoped::read_file_scoped,
             fs::scoped::read_file_base64,
             fs::scoped::write_file_scoped,
+            fs::scoped::copy_file_into_repo,
             fs::scoped::search_repo_files,
             fs::session::save_last_session,
             fs::session::load_last_session,

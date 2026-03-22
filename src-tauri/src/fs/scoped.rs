@@ -65,6 +65,17 @@ pub fn read_file_base64(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+pub fn copy_file_into_repo(src_path: String, dest_dir: String) -> Result<String, String> {
+    let src = std::path::Path::new(&src_path);
+    let file_name = src
+        .file_name()
+        .ok_or_else(|| "source path has no file name".to_string())?;
+    let dest = std::path::Path::new(&dest_dir).join(file_name);
+    fs::copy(src, &dest).map_err(|e| format!("failed to copy file: {e}"))?;
+    Ok(file_name.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 pub fn write_file_scoped(path: String, content: String) -> Result<(), String> {
     let target = PathBuf::from(path);
     if let Some(parent) = target.parent() {
