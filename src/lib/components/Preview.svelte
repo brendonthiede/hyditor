@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
+  import { writable } from 'svelte/store';
   import { listen } from '@tauri-apps/api/event';
   import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
   import { writeText as writeClipboardText } from '@tauri-apps/plugin-clipboard-manager';
@@ -87,27 +88,25 @@
 
   $: currentFileIsImage = isImagePath($editorState.currentFile ?? '');
 
-  let imageSrc: string | null = null;
+  const imageSrc = writable<string | null>(null);
 
   async function loadImagePreview(file: string, repoPath: string): Promise<void> {
     try {
       const b64 = await readFileBase64(joinRepoPath(repoPath, file));
       if ($editorState.currentFile === file) {
-        imageSrc = `data:${getImageMimeType(file)};base64,${b64}`;
+        imageSrc.set(`data:${getImageMimeType(file)};base64,${b64}`);
       }
     } catch {
-      if ($editorState.currentFile === file) imageSrc = null;
+      if ($editorState.currentFile === file) imageSrc.set(null);
     }
   }
 
   $: {
     const file = $editorState.currentFile;
     const repo = $activeRepo;
+    imageSrc.set(null);
     if (file && isImagePath(file) && repo) {
-      imageSrc = null;
       void loadImagePreview(file, repo.localPath);
-    } else {
-      imageSrc = null;
     }
   }
 
@@ -280,8 +279,8 @@
     >
       {#if currentFileIsImage}
         <div class="image-preview">
-          {#if imageSrc}
-            <img src={imageSrc} alt={$editorState.currentFile ?? ''} />
+          {#if $imageSrc}
+            <img src={$imageSrc} alt={$editorState.currentFile ?? ''} />
           {:else}
             <span class="image-loading">Loading…</span>
           {/if}
