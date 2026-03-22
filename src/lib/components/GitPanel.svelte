@@ -5,8 +5,7 @@
     refreshGitStatus,
     revertChanges,
   } from '$lib/stores/repo';
-  import { lastSavedAt } from '$lib/stores/editor';
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
 
   let commitMessage = '';
@@ -81,26 +80,8 @@
     }
   }
 
-  /** Debounce timer for save-triggered refresh. */
-  let saveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
-
-  /** Fallback polling interval (every 5 s) to catch external file changes. */
-  let pollInterval: ReturnType<typeof setInterval> | null = null;
-
-  // React to editor saves: debounce 1 s after each save to refresh git status.
-  $: if ($lastSavedAt > 0) {
-    if (saveRefreshTimer) clearTimeout(saveRefreshTimer);
-    saveRefreshTimer = setTimeout(() => void refreshGitStatus(), 1000);
-  }
-
   onMount(() => {
     void refreshGitStatus();
-    pollInterval = setInterval(() => void refreshGitStatus(), 5000);
-  });
-
-  onDestroy(() => {
-    if (saveRefreshTimer) clearTimeout(saveRefreshTimer);
-    if (pollInterval) clearInterval(pollInterval);
   });
 </script>
 

@@ -9,12 +9,15 @@
   import { writeText as writeClipboardText } from '@tauri-apps/plugin-clipboard-manager';
   import { openUrl } from '@tauri-apps/plugin-opener';
   import { authState, loadAuthState, logOut } from '$lib/stores/auth';
-  import { activeRepo, gitState, resetRepoSession, restoreLastSession } from '$lib/stores/repo';
+  import { activeRepo, gitState, refreshGitStatus, resetRepoSession, restoreLastSession } from '$lib/stores/repo';
   import { layout } from '$lib/stores/layout';
-  import { onMount } from 'svelte';
+  import { lastSavedAt } from '$lib/stores/editor';
+  import { onMount, onDestroy } from 'svelte';
 
   let centerEl: HTMLElement | null = null;
   let showSignOutPanel = false;
+  let saveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  let pollInterval: ReturnType<typeof setInterval> | null = null;
   let signOutBusy = false;
   let signOutError: string | null = null;
   let pathCopied = false;
@@ -22,6 +25,12 @@
 
   $: authenticated = $authState.status === 'authenticated';
   $: changedCount = $gitState.entries.filter((entry) => !entry.whitespace_only).length;
+
+  // Refresh git status 1 s after each save so the badge stays current.
+  $: if ($lastSavedAt > 0) {
+    if (saveRefreshTimer) clearTimeout(saveRefreshTimer);
+    saveRefreshTimer = setTimeout(() => void refreshGitStatus(), 1000);
+  }
 
   // Reactive flex-grow style for the editor pane inside the center area
   $: editorPaneStyle = $layout.previewCollapsed
@@ -108,6 +117,14 @@
         unsubscribe();
       }
     });
+
+    // Poll git status every 5 s to catch external file changes.
+    pollInterval = setInterval(() => void refreshGitStatus(), 5000);
+  });
+
+  onDestroy(() => {
+    if (saveRefreshTimer) clearTimeout(saveRefreshTimer);
+    if (pollInterval) clearInterval(pollInterval);
   });
 </script>
 
