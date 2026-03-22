@@ -62,8 +62,9 @@
   const showAll = writable(false);
 
   interface ContextMenu {
-    dirPath: string;
-    dirAbsPath: string;
+    type: 'dir' | 'file';
+    path: string;
+    absPath: string;
     x: number;
     y: number;
   }
@@ -85,8 +86,8 @@
   import { editorState, fileTree } from '$lib/stores/editor';
   import { activeRepo, openRepoFile } from '$lib/stores/repo';
   import { layout } from '$lib/stores/layout';
-  import { copyFileIntoRepo, readTree } from '$lib/tauri/fs';
-  import { open as openFilePicker } from '@tauri-apps/plugin-dialog';
+  import { copyFileIntoRepo, exportFile, readTree } from '$lib/tauri/fs';
+  import { open as openFilePicker, save as saveFilePicker } from '@tauri-apps/plugin-dialog';
   import SearchPanel from '$lib/components/SearchPanel.svelte';
   import GitPanel from '$lib/components/GitPanel.svelte';
 
@@ -194,14 +195,14 @@
     return filtered;
   }
 
-  async function addFileToDir(dirPath: string, dirAbsPath: string): Promise<void> {
+  async function addFileToDir(absPath: string): Promise<void> {
     contextMenu.set(null);
     const selected = await openFilePicker({ multiple: false, directory: false });
     if (!selected) return;
     const srcPath = typeof selected === 'string' ? selected : selected[0];
     if (!srcPath) return;
     try {
-      await copyFileIntoRepo(srcPath, dirAbsPath);
+      await copyFileIntoRepo(srcPath, absPath);
       const repo = $activeRepo;
       if (repo) {
         const tree = await readTree(repo.localPath);
@@ -212,12 +213,35 @@
     }
   }
 
+  async function downloadFile(fileName: string, absPath: string): Promise<void> {
+    contextMenu.set(null);
+    const lastDir = localStorage.getItem('hyditor:lastSaveDir');
+    const defaultPath = lastDir ? `${lastDir}/${fileName}` : fileName;
+    const destPath = await saveFilePicker({ defaultPath });
+    if (!destPath) return;
+    try {
+      await exportFile(absPath, destPath);
+      const lastSlash = Math.max(destPath.lastIndexOf('/'), destPath.lastIndexOf('\\'));
+      if (lastSlash > 0) {
+        localStorage.setItem('hyditor:lastSaveDir', destPath.slice(0, lastSlash));
+      }
+    } catch (err) {
+      console.error('Failed to export file:', err);
+    }
+  }
+
   function onDirContextMenu(e: MouseEvent, dirPath: string): void {
     const repo = $activeRepo;
     if (!repo) return;
     e.preventDefault();
-    const dirAbsPath = `${repo.localPath}/${dirPath}`;
-    contextMenu.set({ dirPath, dirAbsPath, x: e.clientX, y: e.clientY });
+    contextMenu.set({ type: 'dir', path: dirPath, absPath: `${repo.localPath}/${dirPath}`, x: e.clientX, y: e.clientY });
+  }
+
+  function onFileContextMenu(e: MouseEvent, filePath: string): void {
+    const repo = $activeRepo;
+    if (!repo) return;
+    e.preventDefault();
+    contextMenu.set({ type: 'file', path: filePath, absPath: `${repo.localPath}/${filePath}`, x: e.clientX, y: e.clientY });
   }
 
   $: isRoot = nodes === undefined;
@@ -234,17 +258,24 @@
     : 0;
 </script>
 
-{#if $contextMenu}
+{#if $contextMenu && isRoot}
   <!-- svelte-ignore a11y-no-static-element-interactions -->
   <div
-    class="ctx-backdrop"
+    style="position:fixed;inset:0;z-index:999;"
     on:click={() => contextMenu.set(null)}
     on:contextmenu|preventDefault={() => contextMenu.set(null)}
   />
-  <div class="ctx-menu" style="left: {$contextMenu.x}px; top: {$contextMenu.y}px;">
-    <button on:click={() => addFileToDir($contextMenu!.dirPath, $contextMenu!.dirAbsPath)}>
-      Add file here…
-    </button>
+  <div
+    class="ctx-menu"
+    style="position:fixed;z-index:1000;left:{$contextMenu.x}px;top:{$contextMenu.y}px;"
+  >
+    {#if $contextMenu.type === 'dir'}
+      <button on:click={() => addFileToDir($contextMenu!.absPath)}>Add file here…</button>
+    {:else}
+      <button on:click={() => downloadFile($contextMenu!.path.split('/').pop() ?? $contextMenu!.path, $contextMenu!.absPath)}>
+        Save a copy…
+      </button>
+    {/if}
   </div>
 {/if}
 
@@ -331,7 +362,7 @@
         {#if node.is_dir}
           <button
             class="dir-toggle"
-            on:click={() => toggleDir(node.path)}
+            on:click={() => { contextMenu.set(null); toggleDir(node.path); }}
             on:contextmenu={(e) => onDirContextMenu(e, node.path)}
           >
             <span class="chevron" class:collapsed={$effectiveCollapsedDirs.has(node.path)}>▶</span>
@@ -344,7 +375,8 @@
           <button
             class="file-btn"
             class:active={$editorState.currentFile === node.path}
-            on:click={() => void openRepoFile(node.path)}
+            on:click={() => { contextMenu.set(null); void openRepoFile(node.path); }}
+            on:contextmenu={(e) => onFileContextMenu(e, node.path)}
           >
             <strong>{node.name}</strong>
           </button>
@@ -560,15 +592,7 @@
     font-weight: 600;
   }
 
-  :global(.ctx-backdrop) {
-    position: fixed;
-    inset: 0;
-    z-index: 999;
-  }
-
   :global(.ctx-menu) {
-    position: fixed;
-    z-index: 1000;
     background: #161b22;
     border: 1px solid #30363d;
     border-radius: 6px;

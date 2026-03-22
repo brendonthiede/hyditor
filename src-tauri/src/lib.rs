@@ -41,6 +41,7 @@ pub fn run() {
             fs::scoped::read_file_base64,
             fs::scoped::write_file_scoped,
             fs::scoped::copy_file_into_repo,
+            fs::scoped::export_file,
             fs::scoped::search_repo_files,
             fs::session::save_last_session,
             fs::session::load_last_session,

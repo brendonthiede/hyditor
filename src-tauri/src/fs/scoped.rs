@@ -65,6 +65,17 @@ pub fn read_file_base64(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+pub fn export_file(src_path: String, dest_path: String) -> Result<(), String> {
+    let src = std::path::Path::new(&src_path);
+    let dest = std::path::Path::new(&dest_path);
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("failed to create destination directory: {e}"))?;
+    }
+    fs::copy(src, dest).map_err(|e| format!("failed to export file: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn copy_file_into_repo(src_path: String, dest_dir: String) -> Result<String, String> {
     let src = std::path::Path::new(&src_path);
     let file_name = src
