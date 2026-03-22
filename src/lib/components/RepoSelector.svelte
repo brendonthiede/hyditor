@@ -3,6 +3,7 @@
   import { listen } from '@tauri-apps/api/event';
   import { onMount } from 'svelte';
   import { repoList } from '$lib/stores/repo';
+  import { logOut } from '$lib/stores/auth';
 
   const PAGE_SIZE = 20;
 
@@ -42,7 +43,10 @@
 </script>
 
 <section class="repo-picker">
-  <h2>Select a Repository</h2>
+  <div class="header-row">
+    <h2>Select a Repository</h2>
+    <button class="sign-out-btn" on:click={() => void logOut()}>Sign Out</button>
+  </div>
   {#if $repoState.loading}
     <p>Loading repositories…</p>
   {:else}
@@ -136,6 +140,28 @@
 <style>
   .repo-picker {
     padding: 1rem;
+  }
+
+  .header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+  }
+
+  .header-row h2 {
+    margin: 0;
+  }
+
+  .sign-out-btn {
+    width: auto;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.85rem;
+    opacity: 0.75;
+  }
+
+  .sign-out-btn:hover {
+    opacity: 1;
   }
 
   .filter-row {

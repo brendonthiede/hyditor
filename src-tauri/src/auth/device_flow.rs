@@ -96,7 +96,7 @@ pub async fn start_device_flow() -> Result<DeviceFlowStart, String> {
         .header("User-Agent", "hyditor")
         .form(&[
             ("client_id", client_id.as_str()),
-            ("scope", "repo read:user"),
+            ("scope", "repo read:user read:org"),
         ])
         .send()
         .await
