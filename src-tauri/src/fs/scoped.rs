@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose, Engine as _};
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -54,6 +55,13 @@ pub fn read_tree(repo_path: String) -> Result<Vec<TreeEntry>, String> {
 pub fn read_file_scoped(path: String) -> Result<String, String> {
     let path = validate_scoped_path(Path::new(&path))?;
     fs::read_to_string(path).map_err(|e| format!("failed to read file: {e}"))
+}
+
+#[tauri::command]
+pub fn read_file_base64(path: String) -> Result<String, String> {
+    let path = validate_scoped_path(Path::new(&path))?;
+    let bytes = fs::read(&path).map_err(|e| format!("failed to read file: {e}"))?;
+    Ok(general_purpose::STANDARD.encode(&bytes))
 }
 
 #[tauri::command]

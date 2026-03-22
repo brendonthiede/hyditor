@@ -37,6 +37,7 @@ pub fn run() {
             git::branch::switch_branch,
             fs::scoped::read_tree,
             fs::scoped::read_file_scoped,
+            fs::scoped::read_file_base64,
             fs::scoped::write_file_scoped,
             fs::scoped::search_repo_files,
             fs::session::save_last_session,

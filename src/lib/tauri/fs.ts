@@ -9,6 +9,10 @@ export async function readFile(path: string): Promise<string> {
   return tauriInvoke<string>('read_file_scoped', { path });
 }
 
+export async function readFileBase64(path: string): Promise<string> {
+  return tauriInvoke<string>('read_file_base64', { path });
+}
+
 export async function writeFile(path: string, content: string): Promise<void> {
   await tauriInvoke('write_file_scoped', { path, content });
 }

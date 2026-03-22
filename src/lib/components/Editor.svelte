@@ -45,6 +45,7 @@
   } from '$lib/stores/editor';
   import { saveRepoFile } from '$lib/stores/repo';
   import { applyLineEnding, equalsIgnoringLineEndings } from '$lib/utils/lineEndings';
+  import { isImagePath } from '$lib/utils/errors';
 
   $: currentFile = $editorState.currentFile;
   $: currentContent = $editorState.currentContent;
@@ -52,6 +53,7 @@
   $: lineEnding = $editorState.lineEnding;
   $: fileName = currentFile ? currentFile.split('/').pop() ?? currentFile : null;
   $: directoryPath = currentFile && fileName ? currentFile.slice(0, Math.max(0, currentFile.length - fileName.length - 1)) : '';
+  $: isImage = currentFile ? isImagePath(currentFile) : false;
 
   let editorHost: HTMLDivElement;
   let view: EditorView | null = null;
@@ -162,8 +164,22 @@
       <p>No file selected</p>
     {/if}
   </header>
-  <FrontMatterForm />
-  <div bind:this={editorHost} class="editor-host" aria-label="Code editor"></div>
+  {#if isImage}
+    <div class="not-editable">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <circle cx="8.5" cy="8.5" r="1.5"/>
+        <polyline points="21 15 16 10 5 21"/>
+      </svg>
+      <p>Image files cannot be edited here.</p>
+      <p class="not-editable-hint">The image is displayed in the preview panel.</p>
+    </div>
+  {/if}
+  <!-- Keep the editor host always in the DOM so the CodeMirror view stays attached. -->
+  <div class:hidden={isImage}>
+    <FrontMatterForm />
+  </div>
+  <div bind:this={editorHost} class="editor-host" class:hidden={isImage} aria-label="Code editor"></div>
 </section>
 
 <style>
@@ -202,6 +218,32 @@
 
   strong {
     font-weight: 600;
+  }
+
+  .hidden {
+    display: none;
+  }
+
+  .not-editable {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    color: #8b949e;
+    text-align: center;
+    padding: 2rem;
+  }
+
+  .not-editable p {
+    margin: 0;
+    font-size: 0.9rem;
+  }
+
+  .not-editable-hint {
+    opacity: 0.65;
+    font-size: 0.8rem !important;
   }
 
   .editor-host {

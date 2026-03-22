@@ -53,6 +53,41 @@ export function isHtmlPath(path: string): boolean {
   return path.toLowerCase().endsWith('.html');
 }
 
+const IMAGE_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp', '.avif'
+]);
+
+/**
+ * Check whether a file path points to an image file.
+ */
+export function isImagePath(path: string): boolean {
+  const dot = path.lastIndexOf('.');
+  if (dot === -1) return false;
+  return IMAGE_EXTENSIONS.has(path.slice(dot).toLowerCase());
+}
+
+const MIME_MAP: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.bmp': 'image/bmp',
+  '.avif': 'image/avif',
+};
+
+/**
+ * Return the MIME type for a known image extension, defaulting to
+ * `application/octet-stream` for unrecognised extensions.
+ */
+export function getImageMimeType(path: string): string {
+  const dot = path.lastIndexOf('.');
+  if (dot === -1) return 'application/octet-stream';
+  return MIME_MAP[path.slice(dot).toLowerCase()] ?? 'application/octet-stream';
+}
+
 /**
  * Check whether a file path points to a content file that can be edited and
  * previewed — currently Markdown (`.md`, `.markdown`) or HTML (`.html`).

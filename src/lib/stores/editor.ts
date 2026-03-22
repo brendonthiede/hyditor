@@ -41,6 +41,15 @@ export function setCurrentFileContent(path: string, content: string): void {
   });
 }
 
+export function setCurrentImageFile(path: string): void {
+  editorState.set({
+    currentFile: path,
+    currentContent: '',
+    originalContent: '',
+    lineEnding: 'lf'
+  });
+}
+
 export function markCurrentContentSaved(savedContent?: string): void {
   editorState.update((state) => ({
     ...state,

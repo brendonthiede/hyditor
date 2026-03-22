@@ -12,8 +12,10 @@
   import { parseFrontmatter } from '$lib/utils/frontmatter';
   import { renderMarkdown } from '$lib/utils/markdown';
   import { jekyllUrlForFile } from '$lib/utils/jekyll';
-  import { isHtmlPath } from '$lib/utils/errors';
+  import { getImageMimeType, isHtmlPath, isImagePath, joinRepoPath } from '$lib/utils/errors';
   import { PREVIEW_POPUP_LABEL, emitToPreviewPopup } from '$lib/tauri/window';
+  import { activeRepo } from '$lib/stores/repo';
+  import { readFileBase64 } from '$lib/tauri/fs';
 
   /** Split an error message into text and URL segments for rendering. */
   type ErrorSegment = { kind: 'text'; value: string } | { kind: 'url'; value: string };
@@ -80,6 +82,32 @@
       }, 2000);
     } catch {
       // Silently ignore open errors
+    }
+  }
+
+  $: currentFileIsImage = isImagePath($editorState.currentFile ?? '');
+
+  let imageSrc: string | null = null;
+
+  async function loadImagePreview(file: string, repoPath: string): Promise<void> {
+    try {
+      const b64 = await readFileBase64(joinRepoPath(repoPath, file));
+      if ($editorState.currentFile === file) {
+        imageSrc = `data:${getImageMimeType(file)};base64,${b64}`;
+      }
+    } catch {
+      if ($editorState.currentFile === file) imageSrc = null;
+    }
+  }
+
+  $: {
+    const file = $editorState.currentFile;
+    const repo = $activeRepo;
+    if (file && isImagePath(file) && repo) {
+      imageSrc = null;
+      void loadImagePreview(file, repo.localPath);
+    } else {
+      imageSrc = null;
     }
   }
 
@@ -250,7 +278,15 @@
       class="viewport"
       style={`width: ${$previewState.viewport.width}px; height: ${$previewState.viewport.height}px;`}
     >
-      {#if $previewState.mode === 'jekyll' && iframeSrc}
+      {#if currentFileIsImage}
+        <div class="image-preview">
+          {#if imageSrc}
+            <img src={imageSrc} alt={$editorState.currentFile ?? ''} />
+          {:else}
+            <span class="image-loading">Loading…</span>
+          {/if}
+        </div>
+      {:else if $previewState.mode === 'jekyll' && iframeSrc}
         {#key iframeSrc}
           <iframe title="Jekyll preview" src={iframeSrc}></iframe>
         {/key}
@@ -350,6 +386,25 @@
     height: 100%;
     border: 0;
     background: #fff;
+  }
+
+  .image-preview {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    overflow: auto;
+    padding: 0.75rem;
+  }
+
+  .image-preview img {
+    display: block;
+  }
+
+  .image-loading {
+    color: #8b949e;
+    font-size: 0.9rem;
   }
 
   article {

@@ -13,9 +13,9 @@ import {
 } from '$lib/tauri/git';
 import { readFile, readTree, writeFile } from '$lib/tauri/fs';
 import { requireReauthentication } from '$lib/stores/auth';
-import { editorState, fileTree, resetEditorState, setCurrentFileContent } from '$lib/stores/editor';
+import { editorState, fileTree, resetEditorState, setCurrentFileContent, setCurrentImageFile } from '$lib/stores/editor';
 import { extractAuthExpiredMessage } from '$lib/utils/authErrors';
-import { getErrorMessage, isContentPath, isMarkdownPath, joinRepoPath } from '$lib/utils/errors';
+import { getErrorMessage, isContentPath, isImagePath, isMarkdownPath, joinRepoPath } from '$lib/utils/errors';
 import { setPreviewMode } from '$lib/stores/preview';
 import { saveLastSession, loadLastSession, clearLastSession } from '$lib/tauri/session';
 
@@ -130,16 +130,25 @@ export async function openRepoFile(relativePath: string, localPathOverride?: str
     return;
   }
 
-  const fullPath = joinRepoPath(basePath, relativePath);
-  try {
-    const content = await readFile(fullPath);
-    setCurrentFileContent(relativePath, content);
-    // Persist the currently opened file for session restore
+  const persistSession = () => {
     const repo = get(activeRepo);
     if (repo) {
       const currentBranch = get(branchState).current;
       saveLastSession(repo.owner, repo.name, currentBranch, relativePath).catch(() => {});
     }
+  };
+
+  if (isImagePath(relativePath)) {
+    setCurrentImageFile(relativePath);
+    persistSession();
+    return;
+  }
+
+  const fullPath = joinRepoPath(basePath, relativePath);
+  try {
+    const content = await readFile(fullPath);
+    setCurrentFileContent(relativePath, content);
+    persistSession();
   } catch {
     return;
   }
