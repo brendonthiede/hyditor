@@ -43,9 +43,11 @@
     markCurrentContentSaved,
     updateCurrentContent
   } from '$lib/stores/editor';
-  import { saveRepoFile } from '$lib/stores/repo';
+  import { activeRepo, saveRepoFile } from '$lib/stores/repo';
+  import { readFile } from '$lib/tauri/fs';
   import { applyLineEnding, equalsIgnoringLineEndings } from '$lib/utils/lineEndings';
-  import { isImagePath } from '$lib/utils/errors';
+  import { isImagePath, joinRepoPath } from '$lib/utils/errors';
+  import { isContentFile, jekyllUrlForFile, parseSitePermalink } from '$lib/utils/jekyll';
 
   function handleDragOver(e: DragEvent): void {
     if (e.dataTransfer?.types.includes('text/x-hyditor-file')) {
@@ -54,15 +56,39 @@
     }
   }
 
-  function handleDrop(e: DragEvent): void {
+  async function resolveDropUrl(path: string): Promise<string> {
+    const repo = $activeRepo;
+    if (!repo || !isContentFile(path)) return `/${path}`;
+    try {
+      const absPath = joinRepoPath(repo.localPath, path);
+      const [fileContent, configContent] = await Promise.all([
+        readFile(absPath).catch(() => ''),
+        readFile(joinRepoPath(repo.localPath, '_config.yml')).catch(() => '')
+      ]);
+      const sitePermalink = parseSitePermalink(configContent);
+      const url = jekyllUrlForFile('', repo.localPath, absPath, fileContent, sitePermalink);
+      return url || `/${path}`;
+    } catch {
+      return `/${path}`;
+    }
+  }
+
+  async function handleDrop(e: DragEvent): Promise<void> {
     const path = e.dataTransfer?.getData('text/x-hyditor-file');
     if (!path || !view) return;
     e.preventDefault();
     e.stopPropagation();
     const pos = view.posAtCoords({ x: e.clientX, y: e.clientY }) ?? view.state.selection.main.anchor;
     const fileName = path.split('/').pop() ?? path;
-    const linkPath = `/${path}`;
-    const insert = isImagePath(path) ? `![${fileName}](${linkPath})` : `[${fileName}](${linkPath})`;
+    let insert: string;
+    if (isImagePath(path)) {
+      const altText = fileName.replace(/\.[^/.]+$/, '');
+      insert = `![${altText}](/${path})`;
+    } else {
+      const linkText = fileName.replace(/\.(md|markdown|html)$/i, '').replace(/^\d{4}-\d{2}-\d{2}-/, '');
+      const url = await resolveDropUrl(path);
+      insert = `[${linkText}](${url})`;
+    }
     view.dispatch({ changes: { from: pos, insert }, selection: { anchor: pos + insert.length } });
     view.focus();
   }
