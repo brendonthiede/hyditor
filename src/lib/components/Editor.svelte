@@ -47,6 +47,26 @@
   import { applyLineEnding, equalsIgnoringLineEndings } from '$lib/utils/lineEndings';
   import { isImagePath } from '$lib/utils/errors';
 
+  function handleDragOver(e: DragEvent): void {
+    if (e.dataTransfer?.types.includes('text/x-hyditor-file')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  }
+
+  function handleDrop(e: DragEvent): void {
+    const path = e.dataTransfer?.getData('text/x-hyditor-file');
+    if (!path || !view) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const pos = view.posAtCoords({ x: e.clientX, y: e.clientY }) ?? view.state.selection.main.anchor;
+    const fileName = path.split('/').pop() ?? path;
+    const linkPath = `/${path}`;
+    const insert = isImagePath(path) ? `![${fileName}](${linkPath})` : `[${fileName}](${linkPath})`;
+    view.dispatch({ changes: { from: pos, insert }, selection: { anchor: pos + insert.length } });
+    view.focus();
+  }
+
   $: currentFile = $editorState.currentFile;
   $: currentContent = $editorState.currentContent;
   $: originalContent = $editorState.originalContent;
@@ -179,7 +199,10 @@
   <div class:hidden={isImage}>
     <FrontMatterForm />
   </div>
-  <div bind:this={editorHost} class="editor-host" class:hidden={isImage} aria-label="Code editor"></div>
+  <div bind:this={editorHost} class="editor-host" class:hidden={isImage} aria-label="Code editor"
+    on:dragover={handleDragOver}
+    on:drop={handleDrop}
+  ></div>
 </section>
 
 <style>

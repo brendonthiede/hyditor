@@ -237,6 +237,11 @@
     contextMenu.set({ type: 'dir', path: dirPath, absPath: `${repo.localPath}/${dirPath}`, x: e.clientX, y: e.clientY });
   }
 
+  function onFileDragStart(e: DragEvent, path: string): void {
+    e.dataTransfer?.setData('text/x-hyditor-file', path);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
+  }
+
   function onFileContextMenu(e: MouseEvent, filePath: string): void {
     const repo = $activeRepo;
     if (!repo) return;
@@ -375,8 +380,10 @@
           <button
             class="file-btn"
             class:active={$editorState.currentFile === node.path}
+            draggable="true"
             on:click={() => { contextMenu.set(null); void openRepoFile(node.path); }}
             on:contextmenu={(e) => onFileContextMenu(e, node.path)}
+            on:dragstart={(e) => onFileDragStart(e, node.path)}
           >
             <strong>{node.name}</strong>
           </button>
