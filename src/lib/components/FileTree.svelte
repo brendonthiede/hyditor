@@ -265,12 +265,14 @@
 </script>
 
 {#if $contextMenu && isRoot}
-  <!-- svelte-ignore a11y-no-static-element-interactions -->
   <div
     style="position:fixed;inset:0;z-index:999;"
+    role="button"
+    tabindex="-1"
     on:click={() => contextMenu.set(null)}
+    on:keydown={(e) => { if (e.key === 'Escape') contextMenu.set(null); }}
     on:contextmenu|preventDefault={() => contextMenu.set(null)}
-  />
+  ></div>
   <div
     class="ctx-menu"
     style="position:fixed;z-index:1000;left:{$contextMenu.x}px;top:{$contextMenu.y}px;"

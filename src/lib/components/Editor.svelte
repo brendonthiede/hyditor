@@ -225,7 +225,7 @@
   <div class:hidden={isImage}>
     <FrontMatterForm />
   </div>
-  <div bind:this={editorHost} class="editor-host" class:hidden={isImage} aria-label="Code editor"
+  <div bind:this={editorHost} class="editor-host" class:hidden={isImage} aria-label="Code editor" role="region"
     on:dragover={handleDragOver}
     on:drop={handleDrop}
   ></div>
