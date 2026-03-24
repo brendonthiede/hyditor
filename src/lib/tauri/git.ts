@@ -36,3 +36,7 @@ export async function switchBranch(repoPath: string, branchName: string): Promis
 export async function fileHeadContent(repoPath: string, filePath: string): Promise<string> {
   return tauriInvoke<string>('git_file_head_content', { repoPath, filePath });
 }
+
+export async function pull(repoPath: string): Promise<string> {
+  return tauriInvoke<string>('git_pull', { repoPath });
+}

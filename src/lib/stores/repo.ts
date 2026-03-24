@@ -6,6 +6,7 @@ import {
   cloneRepo,
   fileHeadContent,
   listBranches,
+  pull,
   publish,
   revertFiles,
   status,
@@ -73,8 +74,37 @@ export const branchState = writable<{
   lastAction: null
 });
 
+/** Non-blocking pull status shown after a repo is loaded. */
+export const pullState = writable<{
+  busy: boolean;
+  error: string | null;
+  lastAction: string | null;
+}>({ busy: false, error: null, lastAction: null });
+
 
 // getErrorMessage imported from '$lib/utils/errors'
+
+/**
+ * Fetch + fast-forward pull from origin. Non-blocking: errors are stored in
+ * pullState so the repo still opens even if the pull fails.
+ */
+async function pullLatest(localPath: string): Promise<void> {
+  pullState.set({ busy: true, error: null, lastAction: null });
+  try {
+    const message = await pull(localPath);
+    pullState.set({ busy: false, error: null, lastAction: message });
+  } catch (error) {
+    // Auth-expired is still fatal — redirect to sign-in
+    if (handleAuthExpiredError(error)) {
+      return;
+    }
+    pullState.set({
+      busy: false,
+      error: getErrorMessage(error) ?? 'Failed to pull latest changes.',
+      lastAction: null
+    });
+  }
+}
 
 function handleAuthExpiredError(error: unknown): boolean {
   const authExpiredMessage = extractAuthExpiredMessage(getErrorMessage(error));
@@ -198,6 +228,9 @@ export async function selectRepo(repo: RepoInfo): Promise<void> {
   try {
     const localPath = await cloneRepo(repo.owner, repo.name);
     activeRepo.set({ ...repo, localPath });
+
+    // Pull latest changes from origin (non-blocking — errors shown in UI)
+    await pullLatest(localPath);
 
     const tree = await readTree(localPath);
     fileTree.set(tree);
@@ -419,6 +452,9 @@ export async function restoreLastSession(): Promise<boolean> {
       const localPath = await cloneRepo(repo.owner, repo.name);
       activeRepo.set({ ...repo, localPath });
 
+      // Pull latest changes from origin (non-blocking — errors shown in UI)
+      await pullLatest(localPath);
+
       const tree = await readTree(localPath);
       fileTree.set(tree);
 
@@ -485,7 +521,12 @@ export function resetRepoSession(): void {
   repoState.set({ loading: false, cloning: null, error: null });
   gitState.set({ entries: [], busy: false, error: null, lastAction: null });
   branchState.set({ current: 'main', branches: ['main'], busy: false, error: null, lastAction: null });
+  pullState.set({ busy: false, error: null, lastAction: null });
   fileTree.set([]);
   resetEditorState();
   clearLastSession().catch(() => {});
+}
+
+export function dismissPullError(): void {
+  pullState.update((state) => ({ ...state, error: null }));
 }

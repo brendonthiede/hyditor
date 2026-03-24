@@ -38,6 +38,7 @@ Hyditor targets users who want a simple editing experience for Jekyll sites. The
 - **One-click publish** — a single "Publish" button stages eligible files, commits (with optional change notes or an auto-generated message), and pushes in one action
 - **Per-file control** — each changed file can be individually reverted (with confirmation) or excluded from publishing via a ⛔ "Do not publish" toggle
 - **Auto-refresh** — the Publish panel refreshes git status automatically after every file save (debounced 1 s) and polls every 5 s to catch external changes
+- **Auto-pull on open** — when a repo is loaded (selected or session-restored), Hyditor fetches and fast-forward merges from origin so the working copy starts up to date; if the pull fails (e.g. diverged branches, network issues) the error is shown in the Publish panel with full details and is dismissible
 - **Branch switching** — users can switch branches via a dropdown; the last-used branch per repo is persisted and restored on next open
 
 ## Quick Start
@@ -273,6 +274,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ AI chat history: chat sessions are persisted to localStorage (up to 50 sessions); the 🕑 button in the AI header opens the session history panel to browse, resume, or delete old chats; the ✚ button starts a new chat (saving the current one); pressing **Up arrow** at the beginning of the input textarea cycles through previous prompts (newest first), **Down arrow** cycles forward (back to your draft text); prompt history is deduplicated across all sessions
 - ✅ Diff view for changed files: clicking a file in the Git (Publish) panel opens a side-by-side diff view using CodeMirror's merge extension; the left panel shows the HEAD (original) content as read-only and the right panel shows the working copy as editable; additions are highlighted in green and deletions in red; edits auto-save with the same debounce logic as the regular editor; a close button returns to the normal editor; switching files via the file tree automatically exits diff mode; the `git_file_head_content` Rust command retrieves the HEAD version of any file (returns empty string for untracked/new files)
 - ✅ Windows `wdm` gem workaround: when `bundle install` fails because the `wdm` 0.1.x native extension cannot compile (common with Ruby 3.2+), `bundle install` is automatically retried with `BUNDLE_FORCE_RUBY_PLATFORM=1` to skip the platform-conditional gem; Jekyll falls back to polling for file changes, which works fine for preview
+- ✅ Auto-pull on repo open: when a repo is loaded (either from the repo selector or session restore), Hyditor automatically fetches from origin and fast-forward merges the current branch; if the remote has diverged (non-fast-forward), the error is shown in the Publish panel with a dismissible message advising the user to resolve with a full Git client; auth-expired errors still redirect to sign-in; the pull is non-blocking — the repo always opens even if pulling fails
 ## Contributor Workflow
 
 - README updates are required as part of "done" for every completed feature, architecture change, or workflow change.

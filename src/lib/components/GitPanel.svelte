@@ -1,8 +1,10 @@
 <script lang="ts">
   import {
+    dismissPullError,
     gitState,
     openDiffForFile,
     publishChanges,
+    pullState,
     refreshGitStatus,
     revertChanges,
   } from '$lib/stores/repo';
@@ -181,6 +183,17 @@
       </button>
     </div>
   </section>
+
+  {#if $pullState.error}
+    <div class="pull-warning">
+      <p class="message error">Pull failed: {$pullState.error}</p>
+      <button class="dismiss-btn" on:click={dismissPullError} title="Dismiss">✕</button>
+    </div>
+  {:else if $pullState.busy}
+    <p class="message">Pulling latest changes…</p>
+  {:else if $pullState.lastAction}
+    <p class="message success">{$pullState.lastAction}</p>
+  {/if}
 
   {#if $gitState.error}
     <p class="message error">{$gitState.error}</p>
@@ -442,5 +455,30 @@
 
   .success {
     color: #3fb950;
+  }
+
+  .pull-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+  }
+
+  .pull-warning .message {
+    flex: 1;
+  }
+
+  .dismiss-btn {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    opacity: 0.5;
+    font-size: 0.8rem;
+    padding: 0;
+    flex-shrink: 0;
+  }
+
+  .dismiss-btn:hover {
+    opacity: 1;
   }
 </style>

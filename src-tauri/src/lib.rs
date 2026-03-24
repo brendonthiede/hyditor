@@ -38,6 +38,7 @@ pub fn run() {
             git::commit::git_revert_files,
             git::publish::git_publish,
             git::push::git_push,
+            git::pull::git_pull,
             git::branch::list_branches,
             git::branch::switch_branch,
             fs::scoped::read_tree,
