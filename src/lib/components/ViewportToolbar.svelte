@@ -83,8 +83,6 @@
     <span class="dim">Starting Jekyll…</span>
   {/if}
 
-  <span class="spacer"></span>
-
   <!-- Panel controls -->
   <div class="icon-group">
     <button

@@ -71,7 +71,7 @@ pub async fn git_pull(app: tauri::AppHandle, repo_path: String) -> Result<String
         .map_err(|e| format!("merge analysis failed: {e}"))?;
 
     if analysis.is_up_to_date() {
-        return Ok("Already up to date.".to_string());
+        return Ok("Latest changes have been synced from GitHub.".to_string());
     }
 
     if analysis.is_fast_forward() {
@@ -91,7 +91,7 @@ pub async fn git_pull(app: tauri::AppHandle, repo_path: String) -> Result<String
         ))
         .map_err(|e| format!("failed to checkout after pull: {e}"))?;
 
-        return Ok("Pulled latest changes.".to_string());
+        return Ok("Pulled latest changes from GitHub.".to_string());
     }
 
     // Non-fast-forward: we don't attempt a real merge to avoid conflicts
