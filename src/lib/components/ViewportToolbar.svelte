@@ -1,9 +1,39 @@
 <script lang="ts">
+  import { writeText as writeClipboardText } from '@tauri-apps/plugin-clipboard-manager';
+  import { openUrl } from '@tauri-apps/plugin-opener';
   import { previewState, setViewportPreset } from '$lib/stores/preview';
   import { layout } from '$lib/stores/layout';
   import { openPreviewPopup, closePreviewPopup } from '$lib/tauri/window';
 
   export let onRefresh: () => void = () => {};
+  export let url: string | null = null;
+
+  let urlCopied = false;
+  let urlCopyTimer: ReturnType<typeof setTimeout> | null = null;
+
+  async function copyUrl(): Promise<void> {
+    if (!url) return;
+    try {
+      await writeClipboardText(url);
+      urlCopied = true;
+      if (urlCopyTimer !== null) clearTimeout(urlCopyTimer);
+      urlCopyTimer = setTimeout(() => {
+        urlCopied = false;
+        urlCopyTimer = null;
+      }, 2000);
+    } catch {
+      // Silently ignore clipboard errors
+    }
+  }
+
+  async function openInBrowser(): Promise<void> {
+    if (!url) return;
+    try {
+      await openUrl(url);
+    } catch {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  }
 
   async function handlePopOut(): Promise<void> {
     if ($layout.previewPoppedOut) {
@@ -36,6 +66,18 @@
     <option value="tablet">Tablet (768×1024)</option>
     <option value="mobile">Mobile (375×812)</option>
   </select>
+
+  {#if url}
+    <div class="url-bar">
+      <span class="url-text" title={url}>{url}</span>
+      <button class="url-action" title={urlCopied ? 'Copied!' : 'Copy URL'} on:click={() => void copyUrl()}>
+        {urlCopied ? '✓' : '📋'}
+      </button>
+      <button class="url-action" title="Open in browser" on:click={() => void openInBrowser()}>
+        ↗
+      </button>
+    </div>
+  {/if}
 
   {#if $previewState.loading}
     <span class="dim">Starting Jekyll…</span>
@@ -161,5 +203,45 @@
   .viewport-select:hover,
   .viewport-select:focus-visible {
     border-color: #8b949e;
+  }
+
+  .url-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+    min-width: 0;
+    flex: 1;
+    max-width: 400px;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    padding: 0.15rem 0.35rem;
+  }
+
+  .url-text {
+    font-size: 0.75rem;
+    color: #8b949e;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1;
+    font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace;
+  }
+
+  .url-action {
+    background: transparent;
+    border: none;
+    color: #8b949e;
+    cursor: pointer;
+    padding: 0 0.15rem;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+    opacity: 0.7;
+  }
+
+  .url-action:hover {
+    opacity: 1;
+    color: #c9d1d9;
   }
 </style>

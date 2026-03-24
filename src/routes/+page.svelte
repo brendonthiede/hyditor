@@ -7,6 +7,7 @@
   import Preview from '$lib/components/Preview.svelte';
   import BranchSelector from '$lib/components/BranchSelector.svelte';
   import PanelResizeHandle from '$lib/components/PanelResizeHandle.svelte';
+  import UpdateNotification from '$lib/components/UpdateNotification.svelte';
   import { writeText as writeClipboardText } from '@tauri-apps/plugin-clipboard-manager';
   import { openUrl } from '@tauri-apps/plugin-opener';
   import { authState, loadAuthState, logOut } from '$lib/stores/auth';
@@ -137,6 +138,7 @@
   <RepoSelector />
 {:else}
   <main class="workspace">
+    <UpdateNotification />
     <header class="toolbar">
       <div class="title-group">
         <h1>Hyditor</h1>

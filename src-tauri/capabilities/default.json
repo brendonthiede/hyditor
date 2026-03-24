@@ -14,6 +14,8 @@
     "dialog:allow-save",
     "mcp-bridge:default",
     "opener:default",
-    "stronghold:default"
+    "process:default",
+    "stronghold:default",
+    "updater:default"
   ]
 }

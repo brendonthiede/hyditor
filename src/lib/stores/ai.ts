@@ -11,6 +11,13 @@ import {
   type ChatMessage
 } from '$lib/tauri/ai';
 import { editorState } from '$lib/stores/editor';
+import {
+  type ChatTemplate,
+  BUILT_IN_TEMPLATES,
+  loadCustomTemplates,
+  persistCustomTemplates,
+  getAllTemplates,
+} from '$lib/utils/aiTemplates';
 
 export type AiStatus = 'idle' | 'loading' | 'streaming' | 'error';
 
@@ -64,12 +71,17 @@ export interface AiState {
   messages: ChatMessage[];
   error: string | null;
   includeRepoContext: boolean;
+  includeFileContext: boolean;
   model: string;
   availableModels: string[];
   sessions: ChatSession[];
   activeSessionId: string | null;
   /** All user prompts across sessions, newest first */
   promptHistory: string[];
+  /** All available templates (built-in + custom) */
+  templates: ChatTemplate[];
+  /** Custom templates only (for persistence) */
+  customTemplates: ChatTemplate[];
 }
 
 const DEFAULTS: AiState = {
@@ -78,11 +90,14 @@ const DEFAULTS: AiState = {
   messages: [],
   error: null,
   includeRepoContext: true,
+  includeFileContext: true,
   model: 'gemini-2.5-flash',
   availableModels: [],
   sessions: [],
   activeSessionId: null,
   promptHistory: [],
+  templates: [...BUILT_IN_TEMPLATES],
+  customTemplates: [],
 };
 
 /** Extract deduplicated user prompts from sessions, newest-first. */
@@ -109,7 +124,9 @@ export const aiState = writable<AiState>({ ...DEFAULTS });
 export function initSessions(): void {
   const sessions = loadSessions();
   const promptHistory = buildPromptHistory(sessions);
-  aiState.update((s) => ({ ...s, sessions, promptHistory }));
+  const customTemplates = browser ? loadCustomTemplates() : [];
+  const templates = getAllTemplates(customTemplates);
+  aiState.update((s) => ({ ...s, sessions, promptHistory, customTemplates, templates }));
 }
 
 /** Save current messages as the active session (or create a new one). */
@@ -232,6 +249,52 @@ export function toggleRepoContext(): void {
   aiState.update((s) => ({ ...s, includeRepoContext: !s.includeRepoContext }));
 }
 
+export function toggleFileContext(): void {
+  aiState.update((s) => ({ ...s, includeFileContext: !s.includeFileContext }));
+}
+
+// ── Template management ─────────────────────────────────────────────
+
+function generateTemplateId(): string {
+  return `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+export function addCustomTemplate(
+  template: Omit<ChatTemplate, 'id' | 'builtIn'>,
+): void {
+  const newTemplate: ChatTemplate = {
+    ...template,
+    id: generateTemplateId(),
+    builtIn: false,
+  };
+  aiState.update((s) => {
+    const customTemplates = [...s.customTemplates, newTemplate];
+    persistCustomTemplates(customTemplates);
+    return { ...s, customTemplates, templates: getAllTemplates(customTemplates) };
+  });
+}
+
+export function updateCustomTemplate(
+  id: string,
+  updates: Partial<Omit<ChatTemplate, 'id' | 'builtIn'>>,
+): void {
+  aiState.update((s) => {
+    const customTemplates = s.customTemplates.map((t) =>
+      t.id === id ? { ...t, ...updates } : t,
+    );
+    persistCustomTemplates(customTemplates);
+    return { ...s, customTemplates, templates: getAllTemplates(customTemplates) };
+  });
+}
+
+export function deleteCustomTemplate(id: string): void {
+  aiState.update((s) => {
+    const customTemplates = s.customTemplates.filter((t) => t.id !== id);
+    persistCustomTemplates(customTemplates);
+    return { ...s, customTemplates, templates: getAllTemplates(customTemplates) };
+  });
+}
+
 export async function changeModel(model: string): Promise<void> {
   await setGeminiModel(model);
   aiState.update((s) => ({ ...s, model }));
@@ -258,16 +321,18 @@ export async function sendMessage(repoPath: string, userMessage: string): Promis
     // Get current state to pass full history
     let currentMessages: ChatMessage[] = [];
     let includeContext = true;
+    let includeFile = true;
     let currentModel = '';
     aiState.subscribe((s) => {
       currentMessages = s.messages;
       includeContext = s.includeRepoContext;
+      includeFile = s.includeFileContext;
       currentModel = s.model;
     })();
 
     // Get currently open file context for the AI
     const editor = get(editorState);
-    const currentFile = editor.currentFile;
+    const currentFile = includeFile ? editor.currentFile : null;
     const currentFileContent = currentFile ? editor.currentContent : undefined;
 
     const reply = await geminiChat(repoPath, currentMessages, includeContext, currentModel, currentFile, currentFileContent);

@@ -12,7 +12,7 @@
   "app": {
     "withGlobalTauri": true,
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' https://api.github.com https://github.com https://127.0.0.1:*; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src 'self' http://127.0.0.1:*;"
+      "csp": "default-src 'self'; connect-src 'self' https://api.github.com https://github.com https://127.0.0.1:* https://objects.githubusercontent.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src 'self' http://127.0.0.1:*;"
     },
     "windows": [
       {
@@ -33,6 +33,15 @@
       "icons/icon.icns",
       "icons/icon.ico",
       "icons/icon.png"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/brendonthiede/hyditor/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENDOEY0NDA2MjE4NDIwRjAKUldUd0lJUWhCa1NQelAyK0VCWjF3bUkxVnRWMnp0M1JXcjU0UWFtRjY3SDVOQksrMTBiY3ZlWlgK"
+    }
   }
 }

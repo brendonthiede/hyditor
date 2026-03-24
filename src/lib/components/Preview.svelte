@@ -250,7 +250,7 @@
 <svelte:window on:keydown={onKeyDown} />
 
 <section class="preview" class:fullscreen={$layout.previewFullscreen}>
-  <ViewportToolbar onRefresh={refreshPreview} />
+  <ViewportToolbar onRefresh={refreshPreview} url={debouncedIframeUrl} />
   {#if $previewState.error}
     <div class="error">
       <div class="error-actions">

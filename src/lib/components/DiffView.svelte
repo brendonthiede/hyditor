@@ -69,6 +69,17 @@
     mergeView = null;
   });
 
+  // Sync HEAD content changes into the merge view's original (a) editor
+  $: if (mergeView) {
+    const aView = mergeView.a;
+    const aDoc = aView.state.doc.toString();
+    if (aDoc !== diff.headContent) {
+      aView.dispatch({
+        changes: { from: 0, to: aView.state.doc.length, insert: diff.headContent }
+      });
+    }
+  }
+
   // Sync external content changes into the merge view's modified (b) editor
   $: if (mergeView) {
     const bView = mergeView.b;

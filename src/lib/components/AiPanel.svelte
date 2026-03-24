@@ -10,15 +10,20 @@
     configureApiKey,
     removeApiKey,
     toggleRepoContext,
+    toggleFileContext,
     clearChat,
     sendMessage,
     changeModel,
     initSessions,
     switchSession,
     startNewChat,
-    deleteSession
+    deleteSession,
+    addCustomTemplate,
+    updateCustomTemplate,
+    deleteCustomTemplate
   } from '$lib/stores/ai';
   import { parseMessageSegments, type FileEdit } from '$lib/utils/aiEdits';
+  import { applyPlaceholders, type ChatTemplate, type TemplatePlaceholder } from '$lib/utils/aiTemplates';
 
   let inputText = '';
   let apiKeyInput = '';
@@ -32,6 +37,14 @@
   let historyIndex = -1;
   /** Saved input text before browsing history */
   let savedInput = '';
+  let showTemplates = false;
+  let selectedTemplate: ChatTemplate | null = null;
+  let templateValues: Record<string, string> = {};
+  let showTemplateEditor = false;
+  let editingTemplate: ChatTemplate | null = null;
+  let editTemplateName = '';
+  let editTemplateDescription = '';
+  let editTemplatePrompt = '';
 
   $: isLoading = $aiState.status === 'loading';
 
@@ -92,6 +105,77 @@
         }
       }
     }
+  }
+
+  function selectTemplate(template: ChatTemplate): void {
+    selectedTemplate = template;
+    templateValues = {};
+    for (const p of template.placeholders) {
+      templateValues[p.key] = p.default ?? '';
+    }
+  }
+
+  function applyTemplate(): void {
+    if (!selectedTemplate) return;
+    inputText = applyPlaceholders(selectedTemplate.prompt, templateValues);
+    selectedTemplate = null;
+    templateValues = {};
+    showTemplates = false;
+  }
+
+  function cancelTemplate(): void {
+    selectedTemplate = null;
+    templateValues = {};
+  }
+
+  function openNewTemplateEditor(): void {
+    editingTemplate = null;
+    editTemplateName = '';
+    editTemplateDescription = '';
+    editTemplatePrompt = '';
+    showTemplateEditor = true;
+  }
+
+  function openEditTemplate(t: ChatTemplate): void {
+    editingTemplate = t;
+    editTemplateName = t.name;
+    editTemplateDescription = t.description;
+    editTemplatePrompt = t.prompt;
+    showTemplateEditor = true;
+  }
+
+  function saveTemplateEditor(): void {
+    const name = editTemplateName.trim();
+    const prompt = editTemplatePrompt.trim();
+    if (!name || !prompt) return;
+
+    const placeholderKeys = prompt.match(/\{\{(\w+)\}\}/g)?.map((m) => m.slice(2, -2)) ?? [];
+    const uniqueKeys = [...new Set(placeholderKeys)];
+    const placeholders: TemplatePlaceholder[] = uniqueKeys.map((key) => ({
+      key,
+      label: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' '),
+    }));
+
+    if (editingTemplate) {
+      updateCustomTemplate(editingTemplate.id, {
+        name,
+        description: editTemplateDescription.trim(),
+        prompt,
+        placeholders,
+      });
+    } else {
+      addCustomTemplate({
+        name,
+        description: editTemplateDescription.trim(),
+        prompt,
+        placeholders,
+      });
+    }
+    showTemplateEditor = false;
+  }
+
+  function cancelTemplateEditor(): void {
+    showTemplateEditor = false;
   }
 
   async function handleSaveKey(): Promise<void> {
@@ -207,6 +291,24 @@
       </button>
       <button
         class="ai-icon-btn"
+        class:active={$aiState.includeFileContext}
+        title={$aiState.includeFileContext
+          ? `File context included${$editorState.currentFile ? ` (​${$editorState.currentFile}​)` : ''} — click to exclude`
+          : 'File context excluded — click to include'}
+        on:click={toggleFileContext}
+      >
+        📄
+      </button>
+      <button
+        class="ai-icon-btn"
+        class:active={showTemplates}
+        title="Prompt templates"
+        on:click={() => (showTemplates = !showTemplates)}
+      >
+        📋
+      </button>
+      <button
+        class="ai-icon-btn"
         class:active={showHistory}
         title="Chat history"
         on:click={() => (showHistory = !showHistory)}
@@ -313,6 +415,57 @@
     </div>
   {/if}
 
+  <!-- Template picker -->
+  {#if showTemplates}
+    <div class="template-panel">
+      {#if showTemplateEditor}
+        <div class="template-editor">
+          <input class="template-editor-input" type="text" placeholder="Template name" bind:value={editTemplateName} />
+          <input class="template-editor-input" type="text" placeholder="Description (optional)" bind:value={editTemplateDescription} />
+          <textarea class="template-editor-prompt" placeholder={'Prompt text (use {{placeholder}} for variables)'} bind:value={editTemplatePrompt} rows="4"></textarea>
+          <div class="template-editor-actions">
+            <button class="btn-sm btn-primary" on:click={saveTemplateEditor} disabled={!editTemplateName.trim() || !editTemplatePrompt.trim()}>
+              {editingTemplate ? 'Update' : 'Create'}
+            </button>
+            <button class="btn-sm" on:click={cancelTemplateEditor}>Cancel</button>
+          </div>
+        </div>
+      {:else if selectedTemplate}
+        <div class="template-fill">
+          <p class="template-fill-name">{selectedTemplate.name}</p>
+          {#each selectedTemplate.placeholders as ph (ph.key)}
+            <label class="template-field">
+              <span class="template-field-label">{ph.label}</span>
+              <input class="template-field-input" type="text" bind:value={templateValues[ph.key]} placeholder={ph.default ?? ''} />
+            </label>
+          {/each}
+          <div class="template-fill-actions">
+            <button class="btn-sm btn-primary" on:click={applyTemplate}>Use Template</button>
+            <button class="btn-sm" on:click={cancelTemplate}>Cancel</button>
+          </div>
+        </div>
+      {:else}
+        <div class="template-list">
+          {#each $aiState.templates as t (t.id)}
+            <div class="template-item">
+              <button class="template-item-btn" on:click={() => selectTemplate(t)} title={t.description}>
+                <span class="template-item-name">{t.name}</span>
+                {#if !t.builtIn}<span class="template-custom-badge">custom</span>{/if}
+              </button>
+              {#if !t.builtIn}
+                <button class="template-action-btn" title="Edit" on:click={() => openEditTemplate(t)}>✎</button>
+                <button class="template-action-btn template-delete-btn" title="Delete" on:click={() => deleteCustomTemplate(t.id)}>×</button>
+              {/if}
+            </div>
+          {/each}
+        </div>
+        <div class="template-footer">
+          <button class="btn-sm" on:click={openNewTemplateEditor}>+ New Template</button>
+        </div>
+      {/if}
+    </div>
+  {/if}
+
   <!-- Messages area -->
   <div class="ai-messages">
     {#if !$aiState.apiKeyConfigured && $aiState.messages.length === 0}
@@ -330,6 +483,11 @@
             Repo context is disabled. Toggle 📁 to include it.
           {/if}
         </p>
+        {#if $aiState.includeFileContext && $editorState.currentFile}
+          <p class="dim">📄 Focused: <code class="file-focus-name">{$editorState.currentFile}</code></p>
+        {:else if !$aiState.includeFileContext}
+          <p class="dim">File context is disabled. Toggle 📄 to include it.</p>
+        {/if}
       </div>
     {:else}
       {#each $aiState.messages as message}
@@ -395,6 +553,10 @@
 
   <!-- Input area -->
   <div class="ai-input-area">
+    {#if $aiState.includeFileContext && $editorState.currentFile}
+      <div class="file-focus-bar">📄 <code class="file-focus-name">{$editorState.currentFile}</code></div>
+    {/if}
+    <div class="ai-input-row">
     <textarea
       bind:this={textareaEl}
       class="ai-input"
@@ -411,6 +573,7 @@
     >
       Send
     </button>
+    </div>
   </div>
 </div>
 
@@ -638,6 +801,178 @@
     opacity: 1 !important;
   }
 
+  /* Template panel */
+  .template-panel {
+    border-bottom: 1px solid #30363d;
+    max-height: 250px;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+
+  .template-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .template-item {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid #21262d;
+  }
+
+  .template-item-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.75rem;
+    background: transparent;
+    border: none;
+    color: #c9d1d9;
+    cursor: pointer;
+    text-align: left;
+    font-size: 0.8rem;
+    min-height: 32px;
+  }
+
+  .template-item-btn:hover {
+    background: #161b22;
+  }
+
+  .template-item-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .template-custom-badge {
+    font-size: 0.65rem;
+    opacity: 0.5;
+    background: #30363d;
+    padding: 0.05rem 0.25rem;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  .template-action-btn {
+    background: transparent;
+    border: none;
+    color: #8b949e;
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0.2rem 0.3rem;
+    opacity: 0;
+  }
+
+  .template-item:hover .template-action-btn {
+    opacity: 0.7;
+  }
+
+  .template-action-btn:hover {
+    opacity: 1 !important;
+    color: #c9d1d9;
+  }
+
+  .template-delete-btn:hover {
+    color: #f85149 !important;
+  }
+
+  .template-footer {
+    padding: 0.4rem 0.75rem;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .template-fill {
+    padding: 0.6rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .template-fill-name {
+    margin: 0;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+
+  .template-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    font-size: 0.8rem;
+  }
+
+  .template-field-label {
+    opacity: 0.7;
+    font-size: 0.75rem;
+  }
+
+  .template-field-input {
+    padding: 0.3rem 0.5rem;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    color: #c9d1d9;
+    font-size: 0.8rem;
+  }
+
+  .template-field-input:focus {
+    border-color: #388bfd;
+    outline: none;
+  }
+
+  .template-fill-actions {
+    display: flex;
+    gap: 0.4rem;
+    justify-content: flex-end;
+    margin-top: 0.2rem;
+  }
+
+  .template-editor {
+    padding: 0.6rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .template-editor-input {
+    padding: 0.3rem 0.5rem;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    color: #c9d1d9;
+    font-size: 0.8rem;
+  }
+
+  .template-editor-input:focus {
+    border-color: #388bfd;
+    outline: none;
+  }
+
+  .template-editor-prompt {
+    padding: 0.3rem 0.5rem;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    color: #c9d1d9;
+    font-size: 0.8rem;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 60px;
+  }
+
+  .template-editor-prompt:focus {
+    border-color: #388bfd;
+    outline: none;
+  }
+
+  .template-editor-actions {
+    display: flex;
+    gap: 0.4rem;
+    justify-content: flex-end;
+  }
+
   .ai-messages {
     flex: 1;
     overflow-y: auto;
@@ -666,6 +1001,15 @@
   .dim {
     opacity: 0.65;
     font-size: 0.8rem;
+  }
+
+  .file-focus-name {
+    font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace;
+    font-size: 0.78rem;
+    color: #79c0ff;
+    background: #161b22;
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
   }
 
   .message {
@@ -807,10 +1151,24 @@
 
   .ai-input-area {
     display: flex;
-    gap: 0.5rem;
+    flex-direction: column;
+    gap: 0.35rem;
     padding: 0.5rem;
     border-top: 1px solid #30363d;
     flex-shrink: 0;
+  }
+
+  .file-focus-bar {
+    font-size: 0.75rem;
+    color: #8b949e;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ai-input-row {
+    display: flex;
+    gap: 0.5rem;
   }
 
   .ai-input {

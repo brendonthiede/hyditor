@@ -430,10 +430,10 @@ fn start_jekyll_process(repo_path: &Path, port: u16, livereload_enabled: bool) -
 
     let jekyll_args = if livereload_enabled {
         format!(
-            "serve --host {PREVIEW_HOST} --port {port} {config_flag} --drafts --livereload --livereload-port {livereload_port}"
+            "serve --host {PREVIEW_HOST} --port {port} {config_flag} --drafts --future --unpublished --livereload --livereload-port {livereload_port}"
         )
     } else {
-        format!("serve --host {PREVIEW_HOST} --port {port} {config_flag} --drafts")
+        format!("serve --host {PREVIEW_HOST} --port {port} {config_flag} --drafts --future --unpublished")
     };
     let shell_cmd = if use_bundle {
         format!("bundle exec jekyll {jekyll_args}")
