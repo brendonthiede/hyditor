@@ -90,6 +90,7 @@
   import { open as openFilePicker, save as saveFilePicker } from '@tauri-apps/plugin-dialog';
   import SearchPanel from '$lib/components/SearchPanel.svelte';
   import GitPanel from '$lib/components/GitPanel.svelte';
+  import AiPanel from '$lib/components/AiPanel.svelte';
 
   /** When provided, this instance renders the given nodes (recursive child). */
   export let nodes: TreeNode[] | undefined = undefined;
@@ -303,6 +304,11 @@
           class:active={$layout.leftPanelBlade === 'git'}
           on:click={() => layout.setLeftPanelBlade('git')}
         >Publish</button>
+        <button
+          class="blade-tab"
+          class:active={$layout.leftPanelBlade === 'ai'}
+          on:click={() => layout.setLeftPanelBlade('ai')}
+        >AI</button>
       </div>
       {#if $layout.leftPanelBlade === 'files' && $fileTree.length > 0}
         <button class="icon-btn" title="Collapse all folders" on:click={collapseAll}>
@@ -331,6 +337,10 @@
     {:else if $layout.leftPanelBlade === 'git'}
       <div class="blade-content">
         <GitPanel />
+      </div>
+    {:else if $layout.leftPanelBlade === 'ai'}
+      <div class="blade-content">
+        <AiPanel />
       </div>
     {:else}
       {#if $fileTree.length > 0}

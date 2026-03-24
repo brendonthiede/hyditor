@@ -17,12 +17,13 @@ Hyditor is a **Tauri v2** desktop application (Rust backend + SvelteKit/TypeScri
 | Git | `git2` crate (Rust libgit2, no subprocess) |
 | Auth | GitHub App Device Flow → `tauri-plugin-stronghold` |
 | Preview | Client-side remark/rehype + Jekyll subprocess |
+| AI | Google Gemini API (backend `reqwest` + frontend chat UI) |
 
 ## Project Structure
 
-- `src-tauri/src/` — Rust backend: `auth/`, `fs/`, `git/`, `github/`, `preview/`
+- `src-tauri/src/` — Rust backend: `ai/`, `auth/`, `fs/`, `git/`, `github/`, `preview/`
 - `src/lib/components/` — Svelte UI components
-- `src/lib/stores/` — Svelte stores (auth, editor, layout, preview, repo)
+- `src/lib/stores/` — Svelte stores (ai, auth, editor, layout, preview, repo)
 - `src/lib/tauri/` — TypeScript IPC wrappers for Tauri commands
 - `src/lib/utils/` — Pure utility functions (markdown, frontmatter, jekyll, errors)
 - `src/routes/` — SvelteKit pages

@@ -62,6 +62,7 @@ All Tauri commands are registered in `lib.rs` via `invoke_handler`. Modules:
 - `fs/` — scoped filesystem access restricted to repo paths (`scoped.rs`); session persistence (`session.rs`)
 - `github/` — GitHub REST API for listing repositories
 - `preview/` — spawns/stops the Jekyll process, writes temp config overrides, streams logs to `preview.log`
+- `ai/` — Google Gemini API integration (`gemini.rs`): API key storage, repo context gathering, and chat command
 
 ### IPC Contract
 
@@ -71,7 +72,7 @@ Frontend calls `invoke('command_name', { ...args })` through typed wrappers in `
 
 1. Auth check (`get_token`) → show `AuthScreen` or proceed
 2. Session restore (`load_last_session`) → show `RepoSelector` or reopen last repo
-3. Workspace: left sidebar (Files/Search/Git blades) + CodeMirror editor + Preview panel (Instant Markdown or Jekyll iframe)
+3. Workspace: left sidebar (Files/Search/Git/AI blades) + CodeMirror editor + Preview panel (Instant Markdown or Jekyll iframe)
 
 ### Key Design Decisions
 

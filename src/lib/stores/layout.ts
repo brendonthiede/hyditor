@@ -16,8 +16,8 @@ export interface LayoutState {
   previewFullscreen: boolean;
   /** true while the preview pop-out WebviewWindow is open */
   previewPoppedOut: boolean;
-  /** Which blade is active in the left panel: 'files', 'search', or 'git' */
-  leftPanelBlade: 'files' | 'search' | 'git';
+  /** Which blade is active in the left panel: 'files', 'search', 'git', or 'ai' */
+  leftPanelBlade: 'files' | 'search' | 'git' | 'ai';
 }
 
 const DEFAULTS: LayoutState = {
@@ -95,7 +95,7 @@ function createLayoutStore() {
     setEditorHeightSplit: (v: number) =>
       update((s) => ({ ...s, editorHeightSplit: clamp(v, 0.15, 0.85) })),
 
-    setLeftPanelBlade: (blade: 'files' | 'search' | 'git') =>
+    setLeftPanelBlade: (blade: 'files' | 'search' | 'git' | 'ai') =>
       update((s) => ({ ...s, leftPanelBlade: blade })),
   };
 }

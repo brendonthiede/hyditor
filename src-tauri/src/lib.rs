@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod auth;
 pub mod fs;
 pub mod git;
@@ -49,7 +50,14 @@ pub fn run() {
             preview::jekyll::start_jekyll,
             preview::jekyll::stop_jekyll,
             preview::jekyll::read_preview_log_tail,
-            preview::jekyll::get_preview_log_directory
+            preview::jekyll::get_preview_log_directory,
+            ai::gemini::save_gemini_api_key,
+            ai::gemini::get_gemini_api_key,
+            ai::gemini::clear_gemini_api_key,
+            ai::gemini::get_gemini_model,
+            ai::gemini::set_gemini_model,
+            ai::gemini::list_gemini_models,
+            ai::gemini::gemini_chat
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
