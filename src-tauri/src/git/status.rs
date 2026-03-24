@@ -156,6 +156,36 @@ pub fn git_diff_file(repo_path: String, file_path: String) -> Result<String, Str
     Ok(output)
 }
 
+/// Return the content of a file as it exists in HEAD.
+/// For untracked files (no HEAD entry), returns an empty string.
+#[tauri::command]
+pub fn git_file_head_content(repo_path: String, file_path: String) -> Result<String, String> {
+    let repo = Repository::open(&repo_path).map_err(|e| format!("failed to open repo: {e}"))?;
+
+    let head = match repo.head() {
+        Ok(h) => h,
+        Err(_) => return Ok(String::new()), // No commits yet
+    };
+
+    let tree = head
+        .peel_to_tree()
+        .map_err(|e| format!("failed to peel HEAD to tree: {e}"))?;
+
+    let entry = match tree.get_path(Path::new(&file_path)) {
+        Ok(e) => e,
+        Err(_) => return Ok(String::new()), // File doesn't exist in HEAD (untracked/new)
+    };
+
+    let blob = repo
+        .find_blob(entry.id())
+        .map_err(|e| format!("failed to read blob: {e}"))?;
+
+    let content = std::str::from_utf8(blob.content())
+        .map_err(|_| "file is binary or not valid UTF-8".to_string())?;
+
+    Ok(content.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

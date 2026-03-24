@@ -14,6 +14,20 @@ export type TreeItem = {
 
 export const fileTree = writable<TreeItem[]>([]);
 
+export type DiffState = {
+  active: boolean;
+  filePath: string | null;
+  headContent: string;
+  fileStatus: string;
+};
+
+export const diffState = writable<DiffState>({
+  active: false,
+  filePath: null,
+  headContent: '',
+  fileStatus: ''
+});
+
 export const editorState = writable<{
   currentFile: string | null;
   currentContent: string;
@@ -60,10 +74,19 @@ export function markCurrentContentSaved(savedContent?: string): void {
 
 export function resetEditorState(): void {
   fileTree.set([]);
+  diffState.set({ active: false, filePath: null, headContent: '', fileStatus: '' });
   editorState.set({
     currentFile: null,
     currentContent: initialEditorContent,
     originalContent: initialEditorContent,
     lineEnding: 'lf'
   });
+}
+
+export function enterDiffMode(filePath: string, headContent: string, fileStatus: string): void {
+  diffState.set({ active: true, filePath, headContent, fileStatus });
+}
+
+export function exitDiffMode(): void {
+  diffState.set({ active: false, filePath: null, headContent: '', fileStatus: '' });
 }

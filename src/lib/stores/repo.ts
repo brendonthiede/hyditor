@@ -4,6 +4,7 @@ import {
 } from '$lib/tauri/github';
 import {
   cloneRepo,
+  fileHeadContent,
   listBranches,
   publish,
   revertFiles,
@@ -13,7 +14,7 @@ import {
 } from '$lib/tauri/git';
 import { readFile, readTree, writeFile } from '$lib/tauri/fs';
 import { requireReauthentication } from '$lib/stores/auth';
-import { editorState, fileTree, resetEditorState, setCurrentFileContent, setCurrentImageFile } from '$lib/stores/editor';
+import { editorState, enterDiffMode, exitDiffMode, fileTree, resetEditorState, setCurrentFileContent, setCurrentImageFile } from '$lib/stores/editor';
 import { extractAuthExpiredMessage } from '$lib/utils/authErrors';
 import { getErrorMessage, isContentPath, isImagePath, isMarkdownPath, joinRepoPath } from '$lib/utils/errors';
 import { setPreviewMode } from '$lib/stores/preview';
@@ -129,6 +130,8 @@ export async function openRepoFile(relativePath: string, localPathOverride?: str
   if (!basePath) {
     return;
   }
+
+  exitDiffMode();
 
   const persistSession = () => {
     const repo = get(activeRepo);
@@ -455,6 +458,25 @@ export async function restoreLastSession(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export async function openDiffForFile(relativePath: string, fileStatus: string): Promise<void> {
+  const repo = get(activeRepo);
+  if (!repo) return;
+
+  const headContent = await fileHeadContent(repo.localPath, relativePath);
+
+  // Also load the current working copy into the editor state
+  const fullPath = joinRepoPath(repo.localPath, relativePath);
+  try {
+    const content = await readFile(fullPath);
+    setCurrentFileContent(relativePath, content);
+  } catch {
+    // File was deleted — show empty working copy
+    setCurrentFileContent(relativePath, '');
+  }
+
+  enterDiffMode(relativePath, headContent, fileStatus);
 }
 
 export function resetRepoSession(): void {

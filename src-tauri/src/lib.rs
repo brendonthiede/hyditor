@@ -30,6 +30,7 @@ pub fn run() {
             git::clone::clone_repo,
             git::status::git_status,
             git::status::git_diff_file,
+            git::status::git_file_head_content,
             git::commit::git_stage,
             git::commit::git_commit,
             git::commit::git_revert_files,

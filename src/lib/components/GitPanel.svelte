@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     gitState,
+    openDiffForFile,
     publishChanges,
     refreshGitStatus,
     revertChanges,
@@ -117,7 +118,11 @@
       <ul class="file-list">
         {#each allEntries as entry (entry.path)}
           <li class="file-row" class:excluded={excluded.has(entry.path)} class:whitespace-only={entry.whitespace_only}>
-            <span class="file-path" title={entry.path}>{entry.path}</span>
+            <button
+              class="file-path"
+              title="View diff for {entry.path}"
+              on:click={() => void openDiffForFile(entry.path, entry.whitespace_only ? 'whitespace' : entry.status)}
+            >{entry.path}</button>
             <span class="file-tag">{entry.whitespace_only ? 'whitespace' : entry.status}</span>
             <div class="file-actions">
               {#if !entry.whitespace_only}
@@ -273,6 +278,17 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 0.85rem;
+    background: none;
+    border: none;
+    color: inherit;
+    padding: 0;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .file-path:hover {
+    text-decoration: underline;
+    color: #58a6ff;
   }
 
   .file-tag {

@@ -3,6 +3,7 @@
   import RepoSelector from '$lib/components/RepoSelector.svelte';
   import FileTree from '$lib/components/FileTree.svelte';
   import Editor from '$lib/components/Editor.svelte';
+  import DiffView from '$lib/components/DiffView.svelte';
   import Preview from '$lib/components/Preview.svelte';
   import BranchSelector from '$lib/components/BranchSelector.svelte';
   import PanelResizeHandle from '$lib/components/PanelResizeHandle.svelte';
@@ -11,7 +12,7 @@
   import { authState, loadAuthState, logOut } from '$lib/stores/auth';
   import { activeRepo, gitState, refreshGitStatus, resetRepoSession, restoreLastSession } from '$lib/stores/repo';
   import { layout } from '$lib/stores/layout';
-  import { lastSavedAt } from '$lib/stores/editor';
+  import { diffState, lastSavedAt } from '$lib/stores/editor';
   import { onMount, onDestroy } from 'svelte';
 
   let centerEl: HTMLElement | null = null;
@@ -36,13 +37,13 @@
   $: editorPaneStyle = $layout.previewCollapsed
     ? 'flex: 1; min-width: 0; min-height: 0; overflow: hidden;'
     : $layout.previewPosition === 'side'
-      ? `flex: ${$layout.centerSplit}; min-width: 0; overflow: hidden;`
-      : `flex: ${$layout.editorHeightSplit}; min-width: 0; overflow: hidden;`;
+      ? `flex: ${$layout.centerSplit}; min-width: 0; min-height: 0; overflow: hidden;`
+      : `flex: ${$layout.editorHeightSplit}; min-width: 0; min-height: 0; overflow: hidden;`;
 
   $: previewPaneStyle =
     $layout.previewPosition === 'side'
-      ? `flex: ${1 - $layout.centerSplit}; min-width: 0; overflow: hidden;`
-      : `flex: ${1 - $layout.editorHeightSplit}; min-width: 0; overflow: hidden;`;
+      ? `flex: ${1 - $layout.centerSplit}; min-width: 0; min-height: 0; overflow: hidden;`
+      : `flex: ${1 - $layout.editorHeightSplit}; min-width: 0; min-height: 0; overflow: hidden;`;
 
   function handleCenterDrag(delta: number): void {
     if (!centerEl) return;
@@ -246,7 +247,11 @@
       >
         <!-- Editor pane -->
         <div class="editor-pane" style={editorPaneStyle}>
-          <Editor />
+          {#if $diffState.active}
+            <DiffView />
+          {:else}
+            <Editor />
+          {/if}
         </div>
 
         {#if $layout.previewCollapsed}
@@ -291,6 +296,7 @@
     justify-content: space-between;
     padding: 0.75rem 1rem;
     border-bottom: 1px solid #30363d;
+    flex-shrink: 0;
   }
 
   .toolbar h1 {
@@ -419,7 +425,7 @@
   }
 
   .repo-group {
-    display: inline;
+    display: inline-flex;
     align-items: center;
     border: 1px solid #30363d;
     border-radius: 6px;
