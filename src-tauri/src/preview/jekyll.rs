@@ -354,14 +354,20 @@ fn shell_command_exists(name: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn bundle_install(repo_path: &Path) -> Result<(), String> {
-    log_preview("running bundle install");
-    let output = shell_command("bundle install")
-        .current_dir(repo_path)
+fn run_bundle_install(repo_path: &Path, force_ruby_platform: bool) -> Result<(), (String, String)> {
+    let mut cmd = shell_command("bundle install");
+    cmd.current_dir(repo_path)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    if force_ruby_platform {
+        cmd.env("BUNDLE_FORCE_RUBY_PLATFORM", "1");
+    }
+    let output = cmd
         .output()
-        .map_err(|err| jekyll_setup_error(&format!("Failed to run `bundle install`: {err}")))?;
+        .map_err(|err| {
+            let msg = jekyll_setup_error(&format!("Failed to run `bundle install`: {err}"));
+            (msg.clone(), msg)
+        })?;
 
     if output.status.success() {
         return Ok(());
@@ -377,9 +383,35 @@ fn bundle_install(repo_path: &Path) -> Result<(), String> {
         }
     }
 
-    // Print captured output so it appears in the dev terminal for debugging.
     if !stderr.is_empty() {
         eprint!("{stderr}");
+    }
+
+    Err((combined, format!("{}", output.status)))
+}
+
+fn bundle_install(repo_path: &Path) -> Result<(), String> {
+    log_preview("running bundle install");
+
+    let (combined, exit_status) = match run_bundle_install(repo_path, false) {
+        Ok(()) => return Ok(()),
+        Err(pair) => pair,
+    };
+
+    // On Windows, wdm 0.1.x fails to compile with Ruby 3.2+.  Retry with
+    // BUNDLE_FORCE_RUBY_PLATFORM=1 which tells Bundler to skip platform-
+    // conditional gems like wdm (used only for native file-system watching
+    // that Hyditor does not need).
+    #[cfg(target_os = "windows")]
+    if combined.contains("wdm") && combined.contains("Failed to build gem native extension") {
+        log_preview(
+            "wdm native extension build failed; retrying bundle install \
+             with BUNDLE_FORCE_RUBY_PLATFORM=1 to skip it",
+        );
+        if run_bundle_install(repo_path, true).is_ok() {
+            log_preview("bundle install succeeded after skipping wdm");
+            return Ok(());
+        }
     }
 
     // Detect version-manager "command not found" patterns (rbenv, rvm, asdf, etc.)
@@ -393,8 +425,8 @@ fn bundle_install(repo_path: &Path) -> Result<(), String> {
 
     Err(jekyll_setup_error(&format!(
         "`bundle install` failed (exit {}).\n{}",
-        output.status,
-        stderr.trim()
+        exit_status,
+        combined.trim()
     )))
 }
 

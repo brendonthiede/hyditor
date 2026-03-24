@@ -68,6 +68,22 @@ Most Jekyll sites include a `Gemfile`. When Full Preview starts, Hyditor runs `b
 - Your Ruby version satisfies any version constraint in the `Gemfile` or `.ruby-version`.
 - Native extension build dependencies are installed (e.g. `build-essential` on Debian/Ubuntu).
 
+### `wdm` gem build failure on Windows
+
+The `wdm` (Windows Directory Monitor) gem version 0.1.x fails to compile with Ruby 3.2 and later. Hyditor automatically works around this by retrying `bundle install` with the `wdm` gem skipped — Jekyll will fall back to polling for file changes, which works fine for previewing.
+
+If you still see `wdm`-related errors, you can fix it permanently by updating your site's `Gemfile`:
+
+```ruby
+# Replace this:
+gem "wdm", "~> 0.1.1"
+
+# With this:
+gem "wdm", "~> 0.2.0"
+```
+
+Then run `bundle update wdm` from your site directory.
+
 ## Troubleshooting logs
 
 Hyditor writes Full Preview diagnostics to a persistent `preview.log` file. This includes startup messages, `bundle install` output, and Jekyll stdout/stderr.
