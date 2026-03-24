@@ -324,3 +324,21 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.prepare.outputs.release_id }}
+
+  publish:
+    name: Publish release
+    needs: [prepare, build-linux, build-windows, build-macos]
+    if: always() && needs.build-linux.result == 'success' && needs.build-windows.result == 'success' && (needs.build-macos.result == 'success' || needs.build-macos.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: ${{ needs.prepare.outputs.release_id }},
+              draft: false,
+              make_latest: 'true'
+            });
