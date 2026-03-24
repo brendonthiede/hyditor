@@ -1,4 +1,5 @@
 import { writable, get } from 'svelte/store';
+import { browser } from '$app/environment';
 import {
   getGeminiApiKey,
   saveGeminiApiKey,
@@ -13,6 +14,50 @@ import { editorState } from '$lib/stores/editor';
 
 export type AiStatus = 'idle' | 'loading' | 'streaming' | 'error';
 
+// ── Chat session types ──────────────────────────────────────────────
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+const SESSIONS_STORAGE_KEY = 'hyditor-ai-sessions';
+const MAX_SESSIONS = 50;
+
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function sessionTitle(messages: ChatMessage[]): string {
+  const first = messages.find((m) => m.role === 'user');
+  if (!first) return 'New chat';
+  const text = first.content.trim();
+  return text.length > 60 ? text.slice(0, 57) + '…' : text;
+}
+
+function loadSessions(): ChatSession[] {
+  if (!browser) return [];
+  try {
+    const raw = localStorage.getItem(SESSIONS_STORAGE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as ChatSession[];
+  } catch {
+    return [];
+  }
+}
+
+function persistSessions(sessions: ChatSession[]): void {
+  if (!browser) return;
+  // Keep only the most recent MAX_SESSIONS
+  const trimmed = sessions.slice(0, MAX_SESSIONS);
+  localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(trimmed));
+}
+
+// ── Store state ─────────────────────────────────────────────────────
+
 export interface AiState {
   status: AiStatus;
   apiKeyConfigured: boolean;
@@ -21,6 +66,10 @@ export interface AiState {
   includeRepoContext: boolean;
   model: string;
   availableModels: string[];
+  sessions: ChatSession[];
+  activeSessionId: string | null;
+  /** All user prompts across sessions, newest first */
+  promptHistory: string[];
 }
 
 const DEFAULTS: AiState = {
@@ -31,9 +80,125 @@ const DEFAULTS: AiState = {
   includeRepoContext: true,
   model: 'gemini-2.5-flash',
   availableModels: [],
+  sessions: [],
+  activeSessionId: null,
+  promptHistory: [],
 };
 
+/** Extract deduplicated user prompts from sessions, newest-first. */
+function buildPromptHistory(sessions: ChatSession[]): string[] {
+  const seen = new Set<string>();
+  const prompts: string[] = [];
+  // Walk sessions newest-first, messages newest-first within each
+  for (const session of sessions) {
+    for (let i = session.messages.length - 1; i >= 0; i--) {
+      const m = session.messages[i];
+      if (m.role === 'user' && !seen.has(m.content)) {
+        seen.add(m.content);
+        prompts.push(m.content);
+      }
+    }
+  }
+  return prompts;
+}
+
 export const aiState = writable<AiState>({ ...DEFAULTS });
+
+// ── Session management ──────────────────────────────────────────────
+
+export function initSessions(): void {
+  const sessions = loadSessions();
+  const promptHistory = buildPromptHistory(sessions);
+  aiState.update((s) => ({ ...s, sessions, promptHistory }));
+}
+
+/** Save current messages as the active session (or create a new one). */
+function saveActiveSession(): void {
+  const state = get(aiState);
+  if (state.messages.length === 0) return;
+
+  const now = Date.now();
+  let sessions = [...state.sessions];
+
+  if (state.activeSessionId) {
+    const idx = sessions.findIndex((s) => s.id === state.activeSessionId);
+    if (idx >= 0) {
+      sessions[idx] = {
+        ...sessions[idx],
+        messages: state.messages,
+        title: sessionTitle(state.messages),
+        updatedAt: now,
+      };
+      // Move to front (most recent)
+      const [updated] = sessions.splice(idx, 1);
+      sessions.unshift(updated);
+    }
+  } else {
+    const newSession: ChatSession = {
+      id: generateId(),
+      title: sessionTitle(state.messages),
+      messages: state.messages,
+      createdAt: now,
+      updatedAt: now,
+    };
+    sessions.unshift(newSession);
+    aiState.update((s) => ({ ...s, activeSessionId: newSession.id }));
+  }
+
+  persistSessions(sessions);
+  const promptHistory = buildPromptHistory(sessions);
+  aiState.update((s) => ({ ...s, sessions, promptHistory }));
+}
+
+export function switchSession(sessionId: string): void {
+  const state = get(aiState);
+  const session = state.sessions.find((s) => s.id === sessionId);
+  if (!session) return;
+  aiState.update((s) => ({
+    ...s,
+    messages: [...session.messages],
+    activeSessionId: sessionId,
+    error: null,
+    status: 'idle',
+  }));
+}
+
+export function startNewChat(): void {
+  // Save current session first if it has messages
+  const state = get(aiState);
+  if (state.messages.length > 0) {
+    saveActiveSession();
+  }
+  aiState.update((s) => ({
+    ...s,
+    messages: [],
+    activeSessionId: null,
+    error: null,
+    status: 'idle',
+  }));
+}
+
+export function deleteSession(sessionId: string): void {
+  const state = get(aiState);
+  const sessions = state.sessions.filter((s) => s.id !== sessionId);
+  persistSessions(sessions);
+  const promptHistory = buildPromptHistory(sessions);
+
+  // If we deleted the active session, clear messages
+  if (state.activeSessionId === sessionId) {
+    aiState.update((s) => ({
+      ...s,
+      sessions,
+      promptHistory,
+      activeSessionId: null,
+      messages: [],
+      error: null,
+      status: 'idle',
+    }));
+  } else {
+    aiState.update((s) => ({ ...s, sessions, promptHistory }));
+  }
+}
 
 export async function loadApiKeyStatus(): Promise<void> {
   try {
@@ -73,7 +238,7 @@ export async function changeModel(model: string): Promise<void> {
 }
 
 export function clearChat(): void {
-  aiState.update((s) => ({ ...s, messages: [], error: null, status: 'idle' }));
+  startNewChat();
 }
 
 export async function sendMessage(repoPath: string, userMessage: string): Promise<void> {
@@ -112,6 +277,9 @@ export async function sendMessage(repoPath: string, userMessage: string): Promis
       messages: [...s.messages, reply],
       status: 'idle',
     }));
+
+    // Persist session after each exchange
+    saveActiveSession();
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : String(e);
     aiState.update((s) => ({

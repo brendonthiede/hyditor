@@ -2,7 +2,8 @@
   import { onMount, tick } from 'svelte';
   import { activeRepo } from '$lib/stores/repo';
   import { saveRepoFile, openRepoFile } from '$lib/stores/repo';
-  import { editorState, setCurrentFileContent } from '$lib/stores/editor';
+  import { editorState, fileTree, setCurrentFileContent } from '$lib/stores/editor';
+  import { readTree } from '$lib/tauri/fs';
   import {
     aiState,
     loadApiKeyStatus,
@@ -11,16 +12,26 @@
     toggleRepoContext,
     clearChat,
     sendMessage,
-    changeModel
+    changeModel,
+    initSessions,
+    switchSession,
+    startNewChat,
+    deleteSession
   } from '$lib/stores/ai';
   import { parseMessageSegments, type FileEdit } from '$lib/utils/aiEdits';
 
   let inputText = '';
   let apiKeyInput = '';
   let showKeyConfig = false;
+  let showHistory = false;
   let messagesEnd: HTMLElement | null = null;
+  let textareaEl: HTMLTextAreaElement | null = null;
   /** Tracks which file edits have been applied (by startIndex) */
   let appliedEdits: Set<string> = new Set();
+  /** Current position in prompt history (-1 = not browsing) */
+  let historyIndex = -1;
+  /** Saved input text before browsing history */
+  let savedInput = '';
 
   $: isLoading = $aiState.status === 'loading';
 
@@ -35,6 +46,8 @@
     if (!inputText.trim() || isLoading || !$activeRepo) return;
     const msg = inputText;
     inputText = '';
+    historyIndex = -1;
+    savedInput = '';
     await sendMessage($activeRepo.localPath, msg);
   }
 
@@ -42,6 +55,42 @@
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       void handleSend();
+      return;
+    }
+
+    // Prompt history navigation: Up/Down at the top-left of the textarea
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const ta = textareaEl;
+      if (!ta) return;
+
+      const prompts = $aiState.promptHistory;
+      if (prompts.length === 0) return;
+
+      // Only activate when cursor is at position 0 (top-left)
+      if (ta.selectionStart !== 0 || ta.selectionEnd !== 0) return;
+
+      e.preventDefault();
+
+      if (e.key === 'ArrowUp') {
+        if (historyIndex === -1) {
+          savedInput = inputText;
+          historyIndex = 0;
+        } else if (historyIndex < prompts.length - 1) {
+          historyIndex++;
+        } else {
+          return; // Already at oldest
+        }
+        inputText = prompts[historyIndex];
+      } else {
+        // ArrowDown
+        if (historyIndex <= 0) {
+          historyIndex = -1;
+          inputText = savedInput;
+        } else {
+          historyIndex--;
+          inputText = prompts[historyIndex];
+        }
+      }
     }
   }
 
@@ -66,6 +115,13 @@
     return `${edit.filePath}:${edit.startIndex}`;
   }
 
+  async function refreshTree(): Promise<void> {
+    const repo = $activeRepo;
+    if (!repo) return;
+    const tree = await readTree(repo.localPath);
+    fileTree.set(tree);
+  }
+
   async function applyFileEdit(edit: FileEdit): Promise<void> {
     const repo = $activeRepo;
     if (!repo) return;
@@ -79,6 +135,7 @@
       }
 
       appliedEdits = new Set([...appliedEdits, editKey(edit)]);
+      await refreshTree();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       aiState.update((s) => ({ ...s, error: `Failed to apply ${edit.filePath}: ${msg}` }));
@@ -91,6 +148,7 @@
 
     try {
       await saveRepoFile(edit.filePath, edit.content);
+      await refreshTree();
       await openRepoFile(edit.filePath);
       appliedEdits = new Set([...appliedEdits, editKey(edit)]);
     } catch (e) {
@@ -99,8 +157,36 @@
     }
   }
 
+  function handleSwitchSession(id: string): void {
+    switchSession(id);
+    appliedEdits = new Set();
+    showHistory = false;
+  }
+
+  function handleNewChat(): void {
+    startNewChat();
+    appliedEdits = new Set();
+    showHistory = false;
+  }
+
+  function handleDeleteSession(e: Event, id: string): void {
+    e.stopPropagation();
+    deleteSession(id);
+  }
+
+  function formatDate(ts: number): string {
+    const d = new Date(ts);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    if (isToday) {
+      return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    }
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
   onMount(() => {
     void loadApiKeyStatus();
+    initSessions();
   });
 </script>
 
@@ -118,6 +204,21 @@
         on:click={toggleRepoContext}
       >
         📁
+      </button>
+      <button
+        class="ai-icon-btn"
+        class:active={showHistory}
+        title="Chat history"
+        on:click={() => (showHistory = !showHistory)}
+      >
+        🕑
+      </button>
+      <button
+        class="ai-icon-btn"
+        title="New chat"
+        on:click={handleNewChat}
+      >
+        ✚
       </button>
       <button
         class="ai-icon-btn"
@@ -175,6 +276,39 @@
             {/each}
           </select>
         </label>
+      {/if}
+    </div>
+  {/if}
+
+  <!-- Chat history -->
+  {#if showHistory}
+    <div class="history-panel">
+      {#if $aiState.sessions.length === 0}
+        <p class="history-empty">No previous chats.</p>
+      {:else}
+        <div class="history-list">
+          {#each $aiState.sessions as session (session.id)}
+            <div
+              class="history-item"
+              class:history-active={session.id === $aiState.activeSessionId}
+              on:click={() => handleSwitchSession(session.id)}
+              on:keydown={(e) => e.key === 'Enter' && handleSwitchSession(session.id)}
+              role="button"
+              tabindex="0"
+              title={session.title}
+            >
+              <span class="history-title">{session.title}</span>
+              <span class="history-meta">
+                <span class="history-date">{formatDate(session.updatedAt)}</span>
+                <button
+                  class="history-delete"
+                  title="Delete chat"
+                  on:click={(e) => handleDeleteSession(e, session.id)}
+                >×</button>
+              </span>
+            </div>
+          {/each}
+        </div>
       {/if}
     </div>
   {/if}
@@ -262,8 +396,9 @@
   <!-- Input area -->
   <div class="ai-input-area">
     <textarea
+      bind:this={textareaEl}
       class="ai-input"
-      placeholder={$aiState.apiKeyConfigured ? 'Ask about your site…' : 'Configure API key first…'}
+      placeholder={$aiState.apiKeyConfigured ? 'Ask about your site… (↑ for history)' : 'Configure API key first…'}
       disabled={!$aiState.apiKeyConfigured || isLoading}
       bind:value={inputText}
       on:keydown={handleKeyDown}
@@ -416,6 +551,91 @@
   .btn-primary:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .history-panel {
+    border-bottom: 1px solid #30363d;
+    max-height: 200px;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+
+  .history-empty {
+    padding: 0.75rem;
+    margin: 0;
+    font-size: 0.8rem;
+    opacity: 0.6;
+    text-align: center;
+  }
+
+  .history-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .history-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.4rem 0.75rem;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid #21262d;
+    color: #c9d1d9;
+    cursor: pointer;
+    text-align: left;
+    font-size: 0.8rem;
+    min-height: 32px;
+  }
+
+  .history-item:hover {
+    background: #161b22;
+  }
+
+  .history-item.history-active {
+    background: #1f3a5f;
+  }
+
+  .history-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .history-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex-shrink: 0;
+  }
+
+  .history-date {
+    font-size: 0.7rem;
+    opacity: 0.5;
+    white-space: nowrap;
+  }
+
+  .history-delete {
+    background: transparent;
+    border: none;
+    color: #8b949e;
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 0 0.15rem;
+    line-height: 1;
+    opacity: 0;
+  }
+
+  .history-item:hover .history-delete {
+    opacity: 0.7;
+  }
+
+  .history-delete:hover {
+    color: #f85149;
+    opacity: 1 !important;
   }
 
   .ai-messages {
