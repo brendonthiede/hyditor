@@ -228,7 +228,7 @@
     min-height: 0;
     border: 1px solid #30363d;
     background: transparent;
-    overflow: hidden;
+    overflow: overlay;
   }
 
   /* MergeView container fills the host */
