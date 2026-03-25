@@ -14,6 +14,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   frontend-check:
     name: Frontend checks
@@ -266,7 +269,6 @@ jobs:
   build-macos:
     name: Build macOS
     needs: prepare
-    if: vars.ENABLE_MACOS_BUILD != 'false'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
