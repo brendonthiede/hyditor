@@ -140,10 +140,6 @@
     overflow-x: auto;
   }
 
-  .spacer {
-    flex: 1;
-  }
-
   .dim {
     font-size: 0.8rem;
     opacity: 0.65;
