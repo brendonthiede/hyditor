@@ -8,6 +8,7 @@
   import BranchSelector from '$lib/components/BranchSelector.svelte';
   import PanelResizeHandle from '$lib/components/PanelResizeHandle.svelte';
   import UpdateNotification from '$lib/components/UpdateNotification.svelte';
+  import AboutPanel from '$lib/components/AboutPanel.svelte';
   import { writeText as writeClipboardText } from '@tauri-apps/plugin-clipboard-manager';
   import { openUrl } from '@tauri-apps/plugin-opener';
   import { authState, loadAuthState, logOut } from '$lib/stores/auth';
@@ -18,6 +19,7 @@
 
   let centerEl: HTMLElement | null = null;
   let showSignOutPanel = false;
+  let showAboutPanel = false;
   let saveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   let pollInterval: ReturnType<typeof setInterval> | null = null;
   let signOutBusy = false;
@@ -192,8 +194,23 @@
           </button>
         </div>
         <BranchSelector />
+        <div class="about-menu">
+          <button
+            class="icon-btn"
+            title="About Hyditor"
+            on:click={() => { showAboutPanel = !showAboutPanel; showSignOutPanel = false; }}
+          >
+            <!-- Info circle icon -->
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M0 8a8 8 0 1116 0A8 8 0 010 8zm8-6.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM6.5 7.75A.75.75 0 017.25 7h1a.75.75 0 01.75.75v2.75h.25a.75.75 0 010 1.5h-2a.75.75 0 010-1.5h.25v-2h-.25a.75.75 0 01-.75-.75zM8 6a1 1 0 110-2 1 1 0 010 2z"/>
+            </svg>
+          </button>
+          {#if showAboutPanel}
+            <AboutPanel />
+          {/if}
+        </div>
         <div class="signout-menu">
-          <button class="signout-trigger" on:click={() => (showSignOutPanel = !showSignOutPanel)}>
+          <button class="signout-trigger" on:click={() => { showSignOutPanel = !showSignOutPanel; showAboutPanel = false; }}>
             Sign out
           </button>
           {#if showSignOutPanel}
@@ -435,6 +452,10 @@
     border: 1px solid #30363d;
     border-radius: 6px;
     padding: 0.2rem 0.5rem;
+  }
+
+  .about-menu {
+    position: relative;
   }
 
   .signout-menu {
