@@ -493,7 +493,16 @@ fn start_jekyll_process(repo_path: &Path, port: u16, livereload_enabled: bool) -
 }
 
 #[tauri::command]
-pub fn start_jekyll(repo_path: String) -> Result<JekyllStartResult, String> {
+pub async fn start_jekyll(repo_path: String) -> Result<JekyllStartResult, String> {
+    // Offload all blocking work (bundle install, process spawn, TCP polling)
+    // to a background thread so the Tauri IPC handler stays free and the
+    // window remains responsive while Jekyll boots.
+    tokio::task::spawn_blocking(move || start_jekyll_blocking(repo_path))
+        .await
+        .map_err(|err| format!("Jekyll startup task failed: {err}"))?
+}
+
+fn start_jekyll_blocking(repo_path: String) -> Result<JekyllStartResult, String> {
     let repo_path = PathBuf::from(repo_path);
     if !repo_path.exists() {
         return Err("Repository path does not exist.".to_string());
@@ -673,7 +682,7 @@ mod tests {
 
     #[test]
     fn start_jekyll_rejects_nonexistent_path() {
-        let result = start_jekyll("/definitely/not/a/real/repo/path".to_string());
+        let result = start_jekyll_blocking("/definitely/not/a/real/repo/path".to_string());
         assert!(result.is_err());
         assert!(
             result.unwrap_err().contains("does not exist"),
