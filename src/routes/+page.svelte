@@ -133,7 +133,10 @@
 {#if !authenticated}
   <AuthScreen />
 {:else if restoringSession}
-  <div class="restoring">Restoring last session…</div>
+  <div class="restoring">
+    <div class="restoring-spinner"></div>
+    <span>Restoring last session…</span>
+  </div>
 {:else if !$activeRepo}
   <RepoSelector />
 {:else}
@@ -517,11 +520,28 @@
 
   .restoring {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 0.75rem;
     height: 100vh;
     font-size: 1.1rem;
     opacity: 0.7;
+  }
+
+  .restoring-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid #30363d;
+    border-top-color: #58a6ff;
+    border-radius: 50%;
+    animation: restoring-spin 0.8s linear infinite;
+  }
+
+  @keyframes restoring-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
 

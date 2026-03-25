@@ -285,6 +285,12 @@
             <span class="image-loading">Loading…</span>
           {/if}
         </div>
+      {:else if $previewState.loading}
+        <div class="jekyll-loading">
+          <div class="jekyll-loading-spinner"></div>
+          <p class="jekyll-loading-title">Starting Full Preview…</p>
+          <p class="jekyll-loading-hint">This may take a minute. You can continue editing in the meantime.</p>
+        </div>
       {:else if $previewState.mode === 'jekyll' && iframeSrc}
         {#key iframeSrc}
           <iframe title="Jekyll preview" src={iframeSrc}></iframe>
@@ -405,6 +411,44 @@
   .image-loading {
     color: #8b949e;
     font-size: 0.9rem;
+  }
+
+  .jekyll-loading {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    color: #c9d1d9;
+  }
+
+  .jekyll-loading-spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid #30363d;
+    border-top-color: #58a6ff;
+    border-radius: 50%;
+    animation: jekyll-spin 0.8s linear infinite;
+  }
+
+  @keyframes jekyll-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .jekyll-loading-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .jekyll-loading-hint {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #8b949e;
   }
 
   article {
