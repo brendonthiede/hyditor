@@ -432,13 +432,15 @@
         </div>
       {:else if selectedTemplate}
         <div class="template-fill">
-          <p class="template-fill-name">{selectedTemplate.name}</p>
-          {#each selectedTemplate.placeholders as ph (ph.key)}
-            <label class="template-field">
-              <span class="template-field-label">{ph.label}</span>
-              <input class="template-field-input" type="text" bind:value={templateValues[ph.key]} placeholder={ph.default ?? ''} />
-            </label>
-          {/each}
+          <div class="template-fill-fields">
+            <p class="template-fill-name">{selectedTemplate.name}</p>
+            {#each selectedTemplate.placeholders as ph (ph.key)}
+              <label class="template-field">
+                <span class="template-field-label">{ph.label}</span>
+                <input class="template-field-input" type="text" bind:value={templateValues[ph.key]} placeholder={ph.default ?? ''} />
+              </label>
+            {/each}
+          </div>
           <div class="template-fill-actions">
             <button class="btn-sm btn-primary" on:click={applyTemplate}>Use Template</button>
             <button class="btn-sm" on:click={cancelTemplate}>Cancel</button>
@@ -805,13 +807,17 @@
   .template-panel {
     border-bottom: 1px solid #30363d;
     max-height: 250px;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     flex-shrink: 0;
   }
 
   .template-list {
     display: flex;
     flex-direction: column;
+    overflow-y: auto;
+    min-height: 0;
   }
 
   .template-item {
@@ -881,6 +887,7 @@
     padding: 0.4rem 0.75rem;
     display: flex;
     justify-content: flex-end;
+    flex-shrink: 0;
   }
 
   .template-fill {
@@ -888,6 +895,17 @@
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
+    min-height: 0;
+    flex: 1;
+  }
+
+  .template-fill-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    overflow-y: auto;
+    min-height: 0;
+    flex: 1;
   }
 
   .template-fill-name {
@@ -927,6 +945,7 @@
     gap: 0.4rem;
     justify-content: flex-end;
     margin-top: 0.2rem;
+    flex-shrink: 0;
   }
 
   .template-editor {
@@ -934,6 +953,8 @@
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
+    overflow-y: auto;
+    min-height: 0;
   }
 
   .template-editor-input {
