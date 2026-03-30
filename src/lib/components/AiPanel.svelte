@@ -24,6 +24,7 @@
   } from '$lib/stores/ai';
   import { parseMessageSegments, type FileEdit } from '$lib/utils/aiEdits';
   import { applyPlaceholders, extractPostMetadata, type ChatTemplate, type TemplatePlaceholder } from '$lib/utils/aiTemplates';
+  import { computeLineDiff, type DiffResult } from '$lib/utils/diff';
 
   let inputText = '';
   let apiKeyInput = '';
@@ -33,6 +34,14 @@
   let textareaEl: HTMLTextAreaElement | null = null;
   /** Tracks which file edits have been applied (by startIndex) */
   let appliedEdits: Set<string> = new Set();
+  /** View mode per file edit: 'diff' or 'code' */
+  let editViewModes: Record<string, 'diff' | 'code'> = {};
+  /** Cached original file content for computing diffs */
+  let originalContents: Record<string, string | null> = {};
+  /** Cached diff results */
+  let diffResults: Record<string, DiffResult> = {};
+  /** Tracks which file edits are loading original content */
+  let loadingOriginals: Set<string> = new Set();
   /** Current position in prompt history (-1 = not browsing) */
   let historyIndex = -1;
   /** Saved input text before browsing history */
@@ -56,6 +65,18 @@
   }
 
   $: if ($aiState.messages.length) void scrollToBottom();
+
+  // Load original file content for any new file-edit segments in assistant messages
+  $: {
+    for (const message of $aiState.messages) {
+      if (message.role !== 'model') continue;
+      for (const seg of parseMessageSegments(message.content)) {
+        if (seg.type === 'fileEdit') {
+          void loadOriginalForEdit(seg.edit);
+        }
+      }
+    }
+  }
 
   async function handleSend(): Promise<void> {
     if (!inputText.trim() || isLoading || !$activeRepo) return;
@@ -242,6 +263,36 @@
 
   function editKey(edit: FileEdit): string {
     return `${edit.filePath}:${edit.startIndex}`;
+  }
+
+  /** Load original file content for an edit to enable diff view. */
+  async function loadOriginalForEdit(edit: FileEdit): Promise<void> {
+    const key = editKey(edit);
+    if (key in originalContents || loadingOriginals.has(key)) return;
+
+    const repo = $activeRepo;
+    if (!repo) return;
+
+    loadingOriginals = new Set([...loadingOriginals, key]);
+    try {
+      const fullPath = `${repo.localPath}/${edit.filePath}`;
+      const content = await readFile(fullPath);
+      originalContents = { ...originalContents, [key]: content };
+      diffResults = { ...diffResults, [key]: computeLineDiff(content, edit.content) };
+      // Default to diff view when original is available
+      if (!(key in editViewModes)) {
+        editViewModes = { ...editViewModes, [key]: 'diff' };
+      }
+    } catch {
+      // File doesn't exist yet (new file) — no diff available
+      originalContents = { ...originalContents, [key]: null };
+    }
+    loadingOriginals = new Set([...loadingOriginals].filter((k) => k !== key));
+  }
+
+  function toggleEditViewMode(key: string): void {
+    const current = editViewModes[key] ?? 'code';
+    editViewModes = { ...editViewModes, [key]: current === 'diff' ? 'code' : 'diff' };
   }
 
   async function refreshTree(): Promise<void> {
@@ -558,11 +609,24 @@
                 {#if segment.type === 'text'}
                   <span class="msg-text">{segment.content}</span>
                 {:else}
+                  {@const ek = editKey(segment.edit)}
                   <div class="file-edit-block">
                     <div class="file-edit-header">
                       <span class="file-edit-path">{segment.edit.filePath}</span>
                       <div class="file-edit-actions">
-                        {#if appliedEdits.has(editKey(segment.edit))}
+                        {#if originalContents[ek] != null && diffResults[ek]}
+                          <button
+                            class="btn-view-toggle"
+                            class:active={editViewModes[ek] === 'diff'}
+                            on:click={() => toggleEditViewMode(ek)}
+                            title={editViewModes[ek] === 'diff' ? 'Show full source' : 'Show changes'}
+                          >
+                            {editViewModes[ek] === 'diff' ? '< >' : 'Diff'}
+                          </button>
+                        {:else if originalContents[ek] === null}
+                          <span class="new-file-badge">new file</span>
+                        {/if}
+                        {#if appliedEdits.has(ek)}
                           <span class="applied-badge">✓ Applied</span>
                         {:else}
                           <button
@@ -584,7 +648,31 @@
                         {/if}
                       </div>
                     </div>
-                    <pre class="file-edit-content"><code>{segment.edit.content}</code></pre>
+                    {#if editViewModes[ek] === 'diff' && diffResults[ek]}
+                      {@const diff = diffResults[ek]}
+                      <div class="diff-summary">
+                        {#if diff.additions > 0}<span class="diff-stat-add">+{diff.additions}</span>{/if}
+                        {#if diff.deletions > 0}<span class="diff-stat-del">-{diff.deletions}</span>{/if}
+                        {#if diff.additions === 0 && diff.deletions === 0}<span class="diff-stat-none">No changes</span>{/if}
+                      </div>
+                      <div class="diff-content">
+                        {#each diff.lines as line}
+                          <div
+                            class="diff-line"
+                            class:diff-line-added={line.type === 'added'}
+                            class:diff-line-removed={line.type === 'removed'}
+                            class:diff-line-context={line.type === 'context'}
+                            class:diff-line-separator={line.content === '⋯'}
+                          >
+                            <span class="diff-gutter">{#if line.type === 'added'}+{:else if line.type === 'removed'}-{:else}&nbsp;{/if}</span>
+                            <span class="diff-line-num">{#if line.type !== 'context' || line.content === '⋯'}&nbsp;{:else}{line.oldLineNumber ?? ''}{/if}</span>
+                            <span class="diff-text">{line.content}</span>
+                          </div>
+                        {/each}
+                      </div>
+                    {:else}
+                      <pre class="file-edit-content"><code>{segment.edit.content}</code></pre>
+                    {/if}
                   </div>
                 {/if}
               {/each}
@@ -1239,6 +1327,150 @@
   .file-edit-content code {
     font-family: monospace;
     color: #c9d1d9;
+  }
+
+  /* View mode toggle button */
+  .btn-view-toggle {
+    background: transparent;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    color: #8b949e;
+    padding: 0.15rem 0.4rem;
+    cursor: pointer;
+    font-size: 0.7rem;
+    font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace;
+    white-space: nowrap;
+  }
+
+  .btn-view-toggle:hover {
+    border-color: #8b949e;
+    color: #c9d1d9;
+  }
+
+  .btn-view-toggle.active {
+    border-color: #388bfd;
+    color: #79c0ff;
+  }
+
+  .new-file-badge {
+    font-size: 0.7rem;
+    color: #3fb950;
+    background: rgba(63, 185, 80, 0.12);
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+
+  /* Diff summary stats */
+  .diff-summary {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.72rem;
+    font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace;
+    border-bottom: 1px solid #21262d;
+    background: #0d1117;
+  }
+
+  .diff-stat-add {
+    color: #3fb950;
+    font-weight: 600;
+  }
+
+  .diff-stat-del {
+    color: #f85149;
+    font-weight: 600;
+  }
+
+  .diff-stat-none {
+    color: #8b949e;
+  }
+
+  /* Diff content container */
+  .diff-content {
+    max-height: 400px;
+    overflow-y: auto;
+    overflow-x: auto;
+    font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace;
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+
+  /* Individual diff lines */
+  .diff-line {
+    display: flex;
+    white-space: pre;
+    min-width: fit-content;
+  }
+
+  .diff-line-added {
+    background: rgba(63, 185, 80, 0.15);
+  }
+
+  .diff-line-removed {
+    background: rgba(248, 81, 73, 0.15);
+  }
+
+  .diff-line-context {
+    background: transparent;
+  }
+
+  .diff-line-separator {
+    background: rgba(56, 139, 253, 0.08);
+    justify-content: center;
+  }
+
+  /* Diff gutter (+/-/space indicator) */
+  .diff-gutter {
+    display: inline-block;
+    width: 1.2em;
+    text-align: center;
+    flex-shrink: 0;
+    user-select: none;
+    color: #8b949e;
+    padding-left: 0.3rem;
+  }
+
+  .diff-line-added .diff-gutter {
+    color: #3fb950;
+  }
+
+  .diff-line-removed .diff-gutter {
+    color: #f85149;
+  }
+
+  /* Diff line numbers */
+  .diff-line-num {
+    display: inline-block;
+    width: 3em;
+    text-align: right;
+    flex-shrink: 0;
+    color: #484f58;
+    padding-right: 0.5rem;
+    user-select: none;
+  }
+
+  /* Diff text content */
+  .diff-text {
+    flex: 1;
+    padding-right: 0.5rem;
+  }
+
+  .diff-line-added .diff-text {
+    color: #aff5b4;
+  }
+
+  .diff-line-removed .diff-text {
+    color: #ffa198;
+  }
+
+  .diff-line-context .diff-text {
+    color: #8b949e;
+  }
+
+  .diff-line-separator .diff-text {
+    color: #388bfd;
+    font-style: italic;
   }
 
   .loading-dots {
