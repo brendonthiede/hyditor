@@ -55,7 +55,9 @@ export const BUILT_IN_TEMPLATES: ChatTemplate[] = [
 - Tags: {{tags}}
 - Date: {{date}}
 
-Generate the complete file with proper YAML front matter (layout: post, title, date, categories, tags) and a starter body. Use the Jekyll filename convention (_posts/YYYY-MM-DD-slug.md).`,
+Generate the complete file with proper YAML front matter (layout: post, title, date, categories, tags) and a starter body. Use the Jekyll filename convention (_posts/YYYY-MM-DD-slug.md).
+
+<!-- Replace this with your ideas for the post, or remove it to start with a blank post. -->`,
     placeholders: [
       { key: 'title', label: 'Post title' },
       { key: 'categories', label: 'Categories (comma-separated)', default: '' },
