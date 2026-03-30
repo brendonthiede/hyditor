@@ -32,6 +32,7 @@
   let showHistory = false;
   let messagesEnd: HTMLElement | null = null;
   let textareaEl: HTMLTextAreaElement | null = null;
+  let panelEl: HTMLElement | null = null;
   /** Tracks which file edits have been applied (by startIndex) */
   let appliedEdits: Set<string> = new Set();
   /** View mode per file edit: 'diff' or 'code' */
@@ -59,6 +60,22 @@
 
   $: isLoading = $aiState.status === 'loading';
 
+  /** Auto-resize textarea to fit content, up to 50% of panel height. */
+  function autoResizeTextarea(): void {
+    const ta = textareaEl;
+    if (!ta) return;
+    // Reset to auto so scrollHeight reflects actual content
+    ta.style.height = 'auto';
+    const maxHeight = panelEl ? panelEl.clientHeight * 0.5 : 300;
+    ta.style.height = `${Math.min(ta.scrollHeight, maxHeight)}px`;
+    // Allow manual resize beyond auto height
+    ta.style.maxHeight = 'none';
+  }
+
+  $: if (inputText !== undefined && textareaEl) {
+    void tick().then(autoResizeTextarea);
+  }
+
   async function scrollToBottom(): Promise<void> {
     await tick();
     messagesEnd?.scrollIntoView({ behavior: 'smooth' });
@@ -84,6 +101,9 @@
     inputText = '';
     historyIndex = -1;
     savedInput = '';
+    if (textareaEl) {
+      textareaEl.style.height = 'auto';
+    }
     await sendMessage($activeRepo.localPath, msg);
   }
 
@@ -370,7 +390,7 @@
   });
 </script>
 
-<div class="ai-panel">
+<div class="ai-panel" bind:this={panelEl}>
   <!-- Header -->
   <div class="ai-header">
     <span class="ai-title">AI Assistant</span>
@@ -1522,9 +1542,11 @@
     border-radius: 6px;
     color: #c9d1d9;
     font-size: 0.85rem;
-    resize: none;
+    resize: vertical;
     font-family: inherit;
     line-height: 1.4;
+    min-height: 2.8em;
+    overflow-y: auto;
   }
 
   .ai-input:focus {
