@@ -56,7 +56,8 @@
           })
         ]
       },
-      gutter: true
+      gutter: true,
+      collapseUnchanged: { margin: 3, minSize: 4 }
     });
   });
 
