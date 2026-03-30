@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   applyPlaceholders,
   extractPlaceholderKeys,
+  extractPostMetadata,
   BUILT_IN_TEMPLATES,
   getAllTemplates,
   type ChatTemplate,
@@ -84,5 +85,103 @@ describe('getAllTemplates', () => {
     const all = getAllTemplates([custom]);
     expect(all.length).toBe(BUILT_IN_TEMPLATES.length + 1);
     expect(all[all.length - 1]).toBe(custom);
+  });
+});
+
+describe('extractPostMetadata', () => {
+  it('returns empty arrays for empty input', () => {
+    expect(extractPostMetadata([])).toEqual({ categories: [], tags: [] });
+  });
+
+  it('extracts categories and tags from YAML arrays', () => {
+    const post = `---
+title: Test Post
+categories: [tech, blog]
+tags: [javascript, svelte]
+---
+Body text`;
+    const result = extractPostMetadata([post]);
+    expect(result.categories).toEqual(['blog', 'tech']);
+    expect(result.tags).toEqual(['javascript', 'svelte']);
+  });
+
+  it('extracts from comma-separated strings', () => {
+    const post = `---
+title: Test
+categories: "tech, blog"
+tags: "javascript, svelte"
+---
+Body`;
+    const result = extractPostMetadata([post]);
+    expect(result.categories).toEqual(['blog', 'tech']);
+    expect(result.tags).toEqual(['javascript', 'svelte']);
+  });
+
+  it('handles singular category/tag keys', () => {
+    const post = `---
+title: Test
+category: tech
+tag: javascript
+---
+Body`;
+    const result = extractPostMetadata([post]);
+    expect(result.categories).toEqual(['tech']);
+    expect(result.tags).toEqual(['javascript']);
+  });
+
+  it('deduplicates across multiple posts', () => {
+    const post1 = `---
+categories: [tech]
+tags: [javascript]
+---`;
+    const post2 = `---
+categories: [tech, updates]
+tags: [javascript, rust]
+---`;
+    const result = extractPostMetadata([post1, post2]);
+    expect(result.categories).toEqual(['tech', 'updates']);
+    expect(result.tags).toEqual(['javascript', 'rust']);
+  });
+
+  it('returns sorted results', () => {
+    const post = `---
+categories: [zebra, alpha, middle]
+tags: [zsh, awk, make]
+---`;
+    const result = extractPostMetadata([post]);
+    expect(result.categories).toEqual(['alpha', 'middle', 'zebra']);
+    expect(result.tags).toEqual(['awk', 'make', 'zsh']);
+  });
+
+  it('handles posts with no frontmatter', () => {
+    const result = extractPostMetadata(['Just plain text with no frontmatter']);
+    expect(result.categories).toEqual([]);
+    expect(result.tags).toEqual([]);
+  });
+
+  it('handles posts with frontmatter but no categories or tags', () => {
+    const post = `---
+title: Test
+layout: post
+---
+Body`;
+    const result = extractPostMetadata([post]);
+    expect(result.categories).toEqual([]);
+    expect(result.tags).toEqual([]);
+  });
+
+  it('skips empty and null values in arrays', () => {
+    const post = `---
+categories:
+  - tech
+  - null
+  - blog
+tags:
+  - ""
+  - valid
+---`;
+    const result = extractPostMetadata([post]);
+    expect(result.categories).toEqual(['blog', 'tech']);
+    expect(result.tags).toEqual(['valid']);
   });
 });

@@ -1,5 +1,7 @@
 /** AI chat prompt templates for common Jekyll tasks. */
 
+import { parseFrontmatter } from './frontmatter';
+
 export interface TemplatePlaceholder {
   key: string;
   label: string;
@@ -122,4 +124,46 @@ export function persistCustomTemplates(templates: ChatTemplate[]): void {
 
 export function getAllTemplates(customTemplates: ChatTemplate[]): ChatTemplate[] {
   return [...BUILT_IN_TEMPLATES, ...customTemplates];
+}
+
+/**
+ * Extract unique categories and tags from an array of post file contents.
+ * Handles both YAML array (`tags: [a, b]`) and string (`tags: "a, b"`) formats.
+ */
+export function extractPostMetadata(postContents: string[]): {
+  categories: string[];
+  tags: string[];
+} {
+  const categorySet = new Set<string>();
+  const tagSet = new Set<string>();
+
+  for (const content of postContents) {
+    const { data } = parseFrontmatter(content);
+    collectValues(data['categories'] ?? data['category'], categorySet);
+    collectValues(data['tags'] ?? data['tag'], tagSet);
+  }
+
+  return {
+    categories: [...categorySet].sort((a, b) => a.localeCompare(b)),
+    tags: [...tagSet].sort((a, b) => a.localeCompare(b)),
+  };
+}
+
+function collectValues(value: unknown, target: Set<string>): void {
+  if (value == null) return;
+  if (Array.isArray(value)) {
+    for (const v of value) {
+      if (v == null) continue;
+      const s = String(v).trim();
+      if (s) target.add(s);
+    }
+  } else if (typeof value === 'string') {
+    for (const part of value.split(',')) {
+      const s = part.trim();
+      if (s) target.add(s);
+    }
+  } else {
+    const s = String(value).trim();
+    if (s) target.add(s);
+  }
 }

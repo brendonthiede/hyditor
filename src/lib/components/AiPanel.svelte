@@ -3,7 +3,7 @@
   import { activeRepo } from '$lib/stores/repo';
   import { saveRepoFile, openRepoFile } from '$lib/stores/repo';
   import { editorState, fileTree, setCurrentFileContent } from '$lib/stores/editor';
-  import { readTree } from '$lib/tauri/fs';
+  import { readFile, readTree } from '$lib/tauri/fs';
   import {
     aiState,
     loadApiKeyStatus,
@@ -23,7 +23,7 @@
     deleteCustomTemplate
   } from '$lib/stores/ai';
   import { parseMessageSegments, type FileEdit } from '$lib/utils/aiEdits';
-  import { applyPlaceholders, type ChatTemplate, type TemplatePlaceholder } from '$lib/utils/aiTemplates';
+  import { applyPlaceholders, extractPostMetadata, type ChatTemplate, type TemplatePlaceholder } from '$lib/utils/aiTemplates';
 
   let inputText = '';
   let apiKeyInput = '';
@@ -40,6 +40,8 @@
   let showTemplates = false;
   let selectedTemplate: ChatTemplate | null = null;
   let templateValues: Record<string, string> = {};
+  /** Per-field suggestions (e.g. existing categories/tags from posts). */
+  let fieldSuggestions: Record<string, string[]> = {};
   let showTemplateEditor = false;
   let editingTemplate: ChatTemplate | null = null;
   let editTemplateName = '';
@@ -110,9 +112,50 @@
   function selectTemplate(template: ChatTemplate): void {
     selectedTemplate = template;
     templateValues = {};
+    fieldSuggestions = {};
     for (const p of template.placeholders) {
       templateValues[p.key] = p.default ?? '';
     }
+    if (template.id === 'builtin-new-post') {
+      void loadPostSuggestions();
+    }
+  }
+
+  async function loadPostSuggestions(): Promise<void> {
+    const repo = $activeRepo;
+    if (!repo) return;
+    try {
+      const tree = $fileTree.length > 0 ? $fileTree : await readTree(repo.localPath);
+      const postFiles = tree.filter(
+        (f) => !f.is_dir && f.path.match(/^_posts\/.*\.(?:md|markdown)$/i)
+      );
+      const contents = await Promise.all(
+        postFiles.map((f) => readFile(`${repo.localPath}/${f.path}`).catch(() => ''))
+      );
+      const meta = extractPostMetadata(contents.filter(Boolean));
+      fieldSuggestions = { categories: meta.categories, tags: meta.tags };
+    } catch {
+      // Non-critical — suggestions just won't appear
+    }
+  }
+
+  /** Toggle a suggestion value in a comma-separated template field. */
+  function toggleSuggestion(key: string, value: string): void {
+    const current = templateValues[key] ?? '';
+    const items = current.split(',').map((s) => s.trim()).filter(Boolean);
+    const idx = items.indexOf(value);
+    if (idx >= 0) {
+      items.splice(idx, 1);
+    } else {
+      items.push(value);
+    }
+    templateValues[key] = items.join(', ');
+  }
+
+  /** Check if a suggestion value is currently selected in a comma-separated field. */
+  function isSuggestionSelected(key: string, value: string): boolean {
+    const current = templateValues[key] ?? '';
+    return current.split(',').map((s) => s.trim()).includes(value);
   }
 
   function applyTemplate(): void {
@@ -120,12 +163,14 @@
     inputText = applyPlaceholders(selectedTemplate.prompt, templateValues);
     selectedTemplate = null;
     templateValues = {};
+    fieldSuggestions = {};
     showTemplates = false;
   }
 
   function cancelTemplate(): void {
     selectedTemplate = null;
     templateValues = {};
+    fieldSuggestions = {};
   }
 
   function openNewTemplateEditor(): void {
@@ -439,6 +484,18 @@
                 <span class="template-field-label">{ph.label}</span>
                 <input class="template-field-input" type="text" bind:value={templateValues[ph.key]} placeholder={ph.default ?? ''} />
               </label>
+              {#if fieldSuggestions[ph.key]?.length}
+                <div class="suggestion-chips">
+                  {#each fieldSuggestions[ph.key] as suggestion}
+                    <button
+                      class="suggestion-chip"
+                      class:suggestion-chip-active={isSuggestionSelected(ph.key, suggestion)}
+                      on:click={() => toggleSuggestion(ph.key, suggestion)}
+                      type="button"
+                    >{suggestion}</button>
+                  {/each}
+                </div>
+              {/if}
             {/each}
           </div>
           <div class="template-fill-actions">
@@ -938,6 +995,39 @@
   .template-field-input:focus {
     border-color: #388bfd;
     outline: none;
+  }
+
+  .suggestion-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.1rem;
+  }
+
+  .suggestion-chip {
+    padding: 0.1rem 0.4rem;
+    font-size: 0.7rem;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    background: #161b22;
+    color: #8b949e;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s, border-color 0.1s;
+  }
+
+  .suggestion-chip:hover {
+    background: #21262d;
+    color: #c9d1d9;
+  }
+
+  .suggestion-chip-active {
+    background: #1f3a5f;
+    border-color: #388bfd;
+    color: #c9d1d9;
+  }
+
+  .suggestion-chip-active:hover {
+    background: #1a3050;
   }
 
   .template-fill-actions {
