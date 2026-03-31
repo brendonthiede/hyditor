@@ -13,16 +13,24 @@ import {
 import { editorState } from '$lib/stores/editor';
 import {
   type ChatTemplate,
+  type BuiltInOverride,
+  type PromptVersion,
   BUILT_IN_TEMPLATES,
   loadCustomTemplates,
   persistCustomTemplates,
+  loadBuiltInOverrides,
+  persistBuiltInOverrides,
   getAllTemplates,
+  createPromptVersion,
+  getOriginalBuiltInTemplate,
 } from '$lib/utils/aiTemplates';
 import {
   type TemplateUsage,
+  type TranscriptEntry,
   computeTranscriptEntries,
   computeTemplateStats,
 } from '$lib/utils/aiTranscripts';
+import { buildAnalysisPrompt } from '$lib/utils/aiMetaAnalysis';
 
 export type AiStatus = 'idle' | 'loading' | 'streaming' | 'error';
 
@@ -89,6 +97,8 @@ export interface AiState {
   templates: ChatTemplate[];
   /** Custom templates only (for persistence) */
   customTemplates: ChatTemplate[];
+  /** User overrides for built-in templates (prompt + placeholder changes). */
+  builtInOverrides: BuiltInOverride[];
   /** Template usage pending attachment to next sent message. */
   pendingTemplateUsage: Omit<TemplateUsage, 'messageIndex' | 'timestamp'> | null;
 }
@@ -107,6 +117,7 @@ const DEFAULTS: AiState = {
   promptHistory: [],
   templates: [...BUILT_IN_TEMPLATES],
   customTemplates: [],
+  builtInOverrides: [],
   pendingTemplateUsage: null,
 };
 
@@ -135,8 +146,9 @@ export function initSessions(): void {
   const sessions = loadSessions();
   const promptHistory = buildPromptHistory(sessions);
   const customTemplates = browser ? loadCustomTemplates() : [];
-  const templates = getAllTemplates(customTemplates);
-  aiState.update((s) => ({ ...s, sessions, promptHistory, customTemplates, templates }));
+  const builtInOverrides = browser ? loadBuiltInOverrides() : [];
+  const templates = getAllTemplates(customTemplates, builtInOverrides);
+  aiState.update((s) => ({ ...s, sessions, promptHistory, customTemplates, builtInOverrides, templates }));
 }
 
 /** Save current messages as the active session (or create a new one). */
@@ -298,24 +310,39 @@ export function addCustomTemplate(
     ...template,
     id: generateTemplateId(),
     builtIn: false,
+    versions: [createPromptVersion(template.prompt, template.placeholders, [], 'Initial version')],
   };
   aiState.update((s) => {
     const customTemplates = [...s.customTemplates, newTemplate];
     persistCustomTemplates(customTemplates);
-    return { ...s, customTemplates, templates: getAllTemplates(customTemplates) };
+    return { ...s, customTemplates, templates: getAllTemplates(customTemplates, s.builtInOverrides) };
   });
 }
 
 export function updateCustomTemplate(
   id: string,
   updates: Partial<Omit<ChatTemplate, 'id' | 'builtIn'>>,
+  changeNote?: string,
 ): void {
   aiState.update((s) => {
-    const customTemplates = s.customTemplates.map((t) =>
-      t.id === id ? { ...t, ...updates } : t,
-    );
+    const customTemplates = s.customTemplates.map((t) => {
+      if (t.id !== id) return t;
+      const updated = { ...t, ...updates };
+      // Add a version entry if the prompt changed
+      if (updates.prompt && updates.prompt !== t.prompt) {
+        const versions = t.versions ?? [];
+        const newVersion = createPromptVersion(
+          updates.prompt,
+          updates.placeholders ?? t.placeholders,
+          versions,
+          changeNote,
+        );
+        updated.versions = [newVersion, ...versions];
+      }
+      return updated;
+    });
     persistCustomTemplates(customTemplates);
-    return { ...s, customTemplates, templates: getAllTemplates(customTemplates) };
+    return { ...s, customTemplates, templates: getAllTemplates(customTemplates, s.builtInOverrides) };
   });
 }
 
@@ -323,7 +350,103 @@ export function deleteCustomTemplate(id: string): void {
   aiState.update((s) => {
     const customTemplates = s.customTemplates.filter((t) => t.id !== id);
     persistCustomTemplates(customTemplates);
-    return { ...s, customTemplates, templates: getAllTemplates(customTemplates) };
+    return { ...s, customTemplates, templates: getAllTemplates(customTemplates, s.builtInOverrides) };
+  });
+}
+
+// ── Built-in template overrides ─────────────────────────────────────
+
+/**
+ * Override a built-in template's prompt and placeholders.
+ * Creates a new version and persists the override.
+ */
+export function overrideBuiltInTemplate(
+  id: string,
+  prompt: string,
+  placeholders: ChatTemplate['placeholders'],
+  changeNote?: string,
+): void {
+  aiState.update((s) => {
+    const existing = s.builtInOverrides.find((o) => o.id === id);
+    const versions = existing?.versions ?? [];
+    const newVersion = createPromptVersion(prompt, placeholders, versions, changeNote);
+    const override: BuiltInOverride = {
+      id,
+      prompt,
+      placeholders,
+      versions: [newVersion, ...versions],
+    };
+    const builtInOverrides = existing
+      ? s.builtInOverrides.map((o) => (o.id === id ? override : o))
+      : [...s.builtInOverrides, override];
+    persistBuiltInOverrides(builtInOverrides);
+    return { ...s, builtInOverrides, templates: getAllTemplates(s.customTemplates, builtInOverrides) };
+  });
+}
+
+/**
+ * Revert a built-in template to a specific version from its history.
+ */
+export function revertBuiltInToVersion(id: string, version: number): void {
+  aiState.update((s) => {
+    const existing = s.builtInOverrides.find((o) => o.id === id);
+    if (!existing) return s;
+    const target = existing.versions.find((v) => v.version === version);
+    if (!target) return s;
+    const newVersion = createPromptVersion(
+      target.prompt,
+      target.placeholders,
+      existing.versions,
+      `Reverted to v${version}`,
+    );
+    const override: BuiltInOverride = {
+      id,
+      prompt: target.prompt,
+      placeholders: target.placeholders,
+      versions: [newVersion, ...existing.versions],
+    };
+    const builtInOverrides = s.builtInOverrides.map((o) => (o.id === id ? override : o));
+    persistBuiltInOverrides(builtInOverrides);
+    return { ...s, builtInOverrides, templates: getAllTemplates(s.customTemplates, builtInOverrides) };
+  });
+}
+
+/**
+ * Remove a built-in override — restores the original template.
+ */
+export function resetBuiltInTemplate(id: string): void {
+  aiState.update((s) => {
+    const builtInOverrides = s.builtInOverrides.filter((o) => o.id !== id);
+    persistBuiltInOverrides(builtInOverrides);
+    return { ...s, builtInOverrides, templates: getAllTemplates(s.customTemplates, builtInOverrides) };
+  });
+}
+
+/**
+ * Revert a custom template to a specific version from its history.
+ */
+export function revertCustomToVersion(id: string, version: number): void {
+  aiState.update((s) => {
+    const customTemplates = s.customTemplates.map((t) => {
+      if (t.id !== id) return t;
+      const versions = t.versions ?? [];
+      const target = versions.find((v) => v.version === version);
+      if (!target) return t;
+      const newVersion = createPromptVersion(
+        target.prompt,
+        target.placeholders,
+        versions,
+        `Reverted to v${version}`,
+      );
+      return {
+        ...t,
+        prompt: target.prompt,
+        placeholders: target.placeholders,
+        versions: [newVersion, ...versions],
+      };
+    });
+    persistCustomTemplates(customTemplates);
+    return { ...s, customTemplates, templates: getAllTemplates(customTemplates, s.builtInOverrides) };
   });
 }
 
@@ -354,6 +477,52 @@ export function getTranscriptEntries() {
 /** Get per-template aggregate statistics from transcripts. */
 export function getTemplateStats() {
   return computeTemplateStats(getTranscriptEntries());
+}
+
+/**
+ * Run AI meta-analysis on a template's transcript history.
+ * Sends the template prompt, transcript data, and follow-up conversations
+ * to Gemini and asks it to suggest an improved prompt.
+ * Returns the analysis as a chat in the current session.
+ */
+export async function runTemplateAnalysis(
+  repoPath: string,
+  templateId: string,
+): Promise<void> {
+  const state = get(aiState);
+  const template = state.templates.find((t) => t.id === templateId);
+  if (!template) return;
+
+  const entries = getTranscriptEntries().filter((e) => e.templateId === templateId);
+  if (entries.length === 0) return;
+
+  // Collect the follow-up messages for each transcript entry
+  const transcriptMessages: { entry: TranscriptEntry; messages: ChatMessage[] }[] = [];
+  for (const entry of entries) {
+    const session = state.sessions.find((s) => s.id === entry.sessionId);
+    if (!session) continue;
+    // Get messages from template prompt to next template or end
+    const usages = (session.templateUsages ?? [])
+      .filter((u) => u.templateId === templateId)
+      .sort((a, b) => a.messageIndex - b.messageIndex);
+    const usageIdx = usages.findIndex((u) => u.timestamp === entry.createdAt);
+    if (usageIdx < 0) continue;
+    const startIdx = usages[usageIdx].messageIndex;
+    const endIdx = usageIdx + 1 < usages.length
+      ? usages[usageIdx + 1].messageIndex
+      : session.messages.length;
+    transcriptMessages.push({
+      entry,
+      messages: session.messages.slice(startIdx, endIdx),
+    });
+  }
+
+  const original = getOriginalBuiltInTemplate(templateId);
+  const analysisPrompt = buildAnalysisPrompt(template, entries, transcriptMessages, original);
+
+  // Start a new chat and send the analysis prompt
+  startNewChat();
+  await sendMessage(repoPath, analysisPrompt);
 }
 
 export async function changeModel(model: string): Promise<void> {

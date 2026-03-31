@@ -5,7 +5,12 @@ import {
   extractPostMetadata,
   BUILT_IN_TEMPLATES,
   getAllTemplates,
+  createPromptVersion,
+  getOriginalBuiltInTemplate,
+  isBuiltInOverridden,
   type ChatTemplate,
+  type BuiltInOverride,
+  type PromptVersion,
 } from './aiTemplates';
 
 describe('applyPlaceholders', () => {
@@ -85,6 +90,34 @@ describe('getAllTemplates', () => {
     const all = getAllTemplates([custom]);
     expect(all.length).toBe(BUILT_IN_TEMPLATES.length + 1);
     expect(all[all.length - 1]).toBe(custom);
+  });
+
+  it('applies built-in overrides when provided', () => {
+    const overrides: BuiltInOverride[] = [{
+      id: 'builtin-new-post',
+      prompt: 'Overridden prompt',
+      placeholders: [{ key: 'x', label: 'X' }],
+      versions: [],
+    }];
+    const all = getAllTemplates([], overrides);
+    const newPost = all.find((t) => t.id === 'builtin-new-post');
+    expect(newPost).toBeDefined();
+    expect(newPost!.prompt).toBe('Overridden prompt');
+    expect(newPost!.placeholders).toEqual([{ key: 'x', label: 'X' }]);
+    expect(newPost!.builtIn).toBe(true);
+  });
+
+  it('leaves non-overridden built-ins unchanged', () => {
+    const overrides: BuiltInOverride[] = [{
+      id: 'builtin-new-post',
+      prompt: 'Overridden',
+      placeholders: [],
+      versions: [],
+    }];
+    const all = getAllTemplates([], overrides);
+    const modifyMenu = all.find((t) => t.id === 'builtin-modify-menu');
+    expect(modifyMenu).toBeDefined();
+    expect(modifyMenu!.prompt).toBe(BUILT_IN_TEMPLATES.find((t) => t.id === 'builtin-modify-menu')!.prompt);
   });
 });
 
@@ -183,5 +216,54 @@ tags:
     const result = extractPostMetadata([post]);
     expect(result.categories).toEqual(['blog', 'tech']);
     expect(result.tags).toEqual(['valid']);
+  });
+});
+
+describe('createPromptVersion', () => {
+  it('creates version 1 when no existing versions', () => {
+    const v = createPromptVersion('prompt', [{ key: 'a', label: 'A' }], []);
+    expect(v.version).toBe(1);
+    expect(v.prompt).toBe('prompt');
+    expect(v.placeholders).toEqual([{ key: 'a', label: 'A' }]);
+    expect(v.createdAt).toBeGreaterThan(0);
+  });
+
+  it('increments version based on existing max', () => {
+    const existing: PromptVersion[] = [
+      { version: 3, prompt: 'v3', placeholders: [], createdAt: 100 },
+      { version: 1, prompt: 'v1', placeholders: [], createdAt: 50 },
+    ];
+    const v = createPromptVersion('v4', [], existing, 'AI improvement');
+    expect(v.version).toBe(4);
+    expect(v.changeNote).toBe('AI improvement');
+  });
+});
+
+describe('getOriginalBuiltInTemplate', () => {
+  it('returns the original built-in template by ID', () => {
+    const t = getOriginalBuiltInTemplate('builtin-new-post');
+    expect(t).toBeDefined();
+    expect(t!.name).toBe('New Post');
+    expect(t!.builtIn).toBe(true);
+  });
+
+  it('returns undefined for non-existent ID', () => {
+    expect(getOriginalBuiltInTemplate('custom-xyz')).toBeUndefined();
+  });
+});
+
+describe('isBuiltInOverridden', () => {
+  it('returns true when override exists', () => {
+    const overrides: BuiltInOverride[] = [{
+      id: 'builtin-new-post',
+      prompt: 'x',
+      placeholders: [],
+      versions: [],
+    }];
+    expect(isBuiltInOverridden('builtin-new-post', overrides)).toBe(true);
+  });
+
+  it('returns false when no override exists', () => {
+    expect(isBuiltInOverridden('builtin-new-post', [])).toBe(false);
   });
 });

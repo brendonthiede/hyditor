@@ -23,10 +23,16 @@
     deleteCustomTemplate,
     setPendingTemplateUsage,
     getTemplateStats,
+    overrideBuiltInTemplate,
+    resetBuiltInTemplate,
+    runTemplateAnalysis,
+    revertBuiltInToVersion,
+    revertCustomToVersion,
   } from '$lib/stores/ai';
   import type { TemplateStats, TranscriptEntry } from '$lib/utils/aiTranscripts';
+  import { parseAnalysisResponse } from '$lib/utils/aiMetaAnalysis';
   import { parseMessageSegments, type FileEdit } from '$lib/utils/aiEdits';
-  import { applyPlaceholders, extractPostMetadata, type ChatTemplate, type TemplatePlaceholder } from '$lib/utils/aiTemplates';
+  import { applyPlaceholders, extractPostMetadata, isBuiltInOverridden, type ChatTemplate, type TemplatePlaceholder, type PromptVersion } from '$lib/utils/aiTemplates';
   import { computeLineDiff, type DiffResult } from '$lib/utils/diff';
 
   let inputText = '';
@@ -64,6 +70,10 @@
   let transcriptStats: TemplateStats[] = [];
   let expandedTemplateId: string | null = null;
   let expandedTranscriptEntry: TranscriptEntry | null = null;
+  let analyzingTemplateId: string | null = null;
+  let showVersionHistory: { templateId: string; versions: PromptVersion[] } | null = null;
+  let editingBuiltIn: ChatTemplate | null = null;
+  let editBuiltInPrompt = '';
 
   $: isLoading = $aiState.status === 'loading';
 
@@ -242,6 +252,89 @@
 
   function formatFollowUps(n: number): string {
     return n === 1 ? '1 follow-up' : `${n} follow-ups`;
+  }
+
+  async function analyzeTemplate(templateId: string): Promise<void> {
+    const repo = $activeRepo;
+    if (!repo || analyzingTemplateId) return;
+    analyzingTemplateId = templateId;
+    try {
+      await runTemplateAnalysis(repo.localPath, templateId);
+      showTranscripts = false;
+    } finally {
+      analyzingTemplateId = null;
+    }
+  }
+
+  function openBuiltInEditor(t: ChatTemplate): void {
+    editingBuiltIn = t;
+    editBuiltInPrompt = t.prompt;
+  }
+
+  function saveBuiltInOverride(): void {
+    if (!editingBuiltIn || !editBuiltInPrompt.trim()) return;
+    const prompt = editBuiltInPrompt.trim();
+    const placeholderKeys = prompt.match(/\{\{(\w+)\}\}/g)?.map((m) => m.slice(2, -2)) ?? [];
+    const uniqueKeys = [...new Set(placeholderKeys)];
+    const placeholders: TemplatePlaceholder[] = uniqueKeys.map((key) => ({
+      key,
+      label: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' '),
+    }));
+    overrideBuiltInTemplate(editingBuiltIn.id, prompt, placeholders, 'Manual edit');
+    editingBuiltIn = null;
+    editBuiltInPrompt = '';
+  }
+
+  function cancelBuiltInEditor(): void {
+    editingBuiltIn = null;
+    editBuiltInPrompt = '';
+  }
+
+  function handleResetBuiltIn(t: ChatTemplate): void {
+    resetBuiltInTemplate(t.id);
+  }
+
+  function openVersionHistory(t: ChatTemplate): void {
+    const versions = t.versions ?? [];
+    if (versions.length === 0) return;
+    showVersionHistory = { templateId: t.id, versions };
+  }
+
+  function revertToVersion(version: number): void {
+    if (!showVersionHistory) return;
+    const t = $aiState.templates.find((x) => x.id === showVersionHistory!.templateId);
+    if (!t) return;
+    if (t.builtIn) {
+      revertBuiltInToVersion(t.id, version);
+    } else {
+      revertCustomToVersion(t.id, version);
+    }
+    // Refresh version history
+    const updated = $aiState.templates.find((x) => x.id === showVersionHistory!.templateId);
+    showVersionHistory = updated?.versions?.length
+      ? { templateId: updated.id, versions: updated.versions }
+      : null;
+  }
+
+  function applyAnalysisSuggestion(response: string): void {
+    const result = parseAnalysisResponse(response);
+    if (!result) return;
+    // Find which template this analysis session was about by checking if
+    // the first user message mentions a template name
+    const msgs = $aiState.messages;
+    if (msgs.length === 0) return;
+    const firstMsg = msgs[0].content;
+    // Look for a template whose name appears in the analysis
+    const template = $aiState.templates.find((t) => firstMsg.includes(t.name));
+    if (!template) return;
+    if (template.builtIn) {
+      overrideBuiltInTemplate(template.id, result.improvedPrompt, result.placeholders, 'AI-suggested improvement');
+    } else {
+      updateCustomTemplate(template.id, {
+        prompt: result.improvedPrompt,
+        placeholders: result.placeholders,
+      }, 'AI-suggested improvement');
+    }
   }
 
   function cancelTemplate(): void {
@@ -640,21 +733,33 @@
       {:else}
         <div class="transcript-stats-list">
           {#each transcriptStats as stat (stat.templateId)}
-            <button
-              class="transcript-stat-item"
-              on:click={() => toggleExpandTemplate(stat.templateId)}
-              title="View usage details"
-            >
-              <div class="transcript-stat-header">
-                <span class="transcript-stat-name">{stat.templateName}</span>
-                <span class="transcript-stat-count">{stat.usageCount} uses</span>
-              </div>
-              <div class="transcript-stat-metrics">
-                <span class="transcript-metric">Avg follow-ups: <strong>{stat.avgFollowUps.toFixed(1)}</strong></span>
-                <span class="transcript-metric">Min: {stat.minFollowUps}</span>
-                <span class="transcript-metric">Max: {stat.maxFollowUps}</span>
-              </div>
-            </button>
+            <div class="transcript-stat-item-wrapper">
+              <button
+                class="transcript-stat-item"
+                on:click={() => toggleExpandTemplate(stat.templateId)}
+                title="View usage details"
+              >
+                <div class="transcript-stat-header">
+                  <span class="transcript-stat-name">{stat.templateName}</span>
+                  <span class="transcript-stat-count">{stat.usageCount} uses</span>
+                </div>
+                <div class="transcript-stat-metrics">
+                  <span class="transcript-metric">Avg follow-ups: <strong>{stat.avgFollowUps.toFixed(1)}</strong></span>
+                  <span class="transcript-metric">Min: {stat.minFollowUps}</span>
+                  <span class="transcript-metric">Max: {stat.maxFollowUps}</span>
+                </div>
+              </button>
+              {#if stat.usageCount >= 2}
+                <button
+                  class="btn-sm btn-analyze"
+                  on:click={() => analyzeTemplate(stat.templateId)}
+                  disabled={analyzingTemplateId !== null}
+                  title="Ask AI to analyze transcript patterns and suggest prompt improvements"
+                >
+                  {analyzingTemplateId === stat.templateId ? 'Analyzing…' : '✨ Analyze'}
+                </button>
+              {/if}
+            </div>
           {/each}
         </div>
       {/if}
@@ -704,6 +809,33 @@
             <button class="btn-sm" on:click={cancelTemplate}>Cancel</button>
           </div>
         </div>
+      {:else if editingBuiltIn}
+        <div class="template-editor">
+          <p class="template-fill-name">Edit: {editingBuiltIn.name}</p>
+          <textarea class="template-editor-prompt" placeholder={'Prompt text (use {{placeholder}} for variables)'} bind:value={editBuiltInPrompt} rows="6"></textarea>
+          <div class="template-editor-actions">
+            <button class="btn-sm btn-primary" on:click={saveBuiltInOverride} disabled={!editBuiltInPrompt.trim()}>Save Override</button>
+            <button class="btn-sm" on:click={cancelBuiltInEditor}>Cancel</button>
+          </div>
+        </div>
+      {:else if showVersionHistory}
+        <div class="version-history">
+          <button class="transcript-back" on:click={() => (showVersionHistory = null)}>← Back</button>
+          <p class="template-fill-name">Version History</p>
+          <div class="version-list">
+            {#each showVersionHistory.versions as v (v.version)}
+              <div class="version-item">
+                <div class="version-item-header">
+                  <span class="version-number">v{v.version}</span>
+                  <span class="version-date">{formatDate(v.createdAt)}</span>
+                </div>
+                {#if v.changeNote}<span class="version-note">{v.changeNote}</span>{/if}
+                <pre class="version-prompt">{v.prompt}</pre>
+                <button class="btn-sm" on:click={() => revertToVersion(v.version)}>Revert to this</button>
+              </div>
+            {/each}
+          </div>
+        </div>
       {:else}
         <div class="template-list">
           {#each $aiState.templates as t (t.id)}
@@ -711,9 +843,21 @@
               <button class="template-item-btn" on:click={() => selectTemplate(t)} title={t.description}>
                 <span class="template-item-name">{t.name}</span>
                 {#if !t.builtIn}<span class="template-custom-badge">custom</span>{/if}
+                {#if t.builtIn && isBuiltInOverridden(t.id, $aiState.builtInOverrides)}<span class="template-override-badge">modified</span>{/if}
               </button>
-              {#if !t.builtIn}
+              {#if t.builtIn}
+                <button class="template-action-btn" title="Edit prompt" on:click={() => openBuiltInEditor(t)}>✎</button>
+                {#if isBuiltInOverridden(t.id, $aiState.builtInOverrides)}
+                  <button class="template-action-btn" title="Reset to default" on:click={() => handleResetBuiltIn(t)}>↺</button>
+                {/if}
+                {#if (t.versions ?? []).length > 0}
+                  <button class="template-action-btn" title="Version history" on:click={() => openVersionHistory(t)}>🕑</button>
+                {/if}
+              {:else}
                 <button class="template-action-btn" title="Edit" on:click={() => openEditTemplate(t)}>✎</button>
+                {#if (t.versions ?? []).length > 0}
+                  <button class="template-action-btn" title="Version history" on:click={() => openVersionHistory(t)}>🕑</button>
+                {/if}
                 <button class="template-action-btn template-delete-btn" title="Delete" on:click={() => deleteCustomTemplate(t.id)}>×</button>
               {/if}
             </div>
@@ -826,6 +970,13 @@
                   </div>
                 {/if}
               {/each}
+              {#if message.content.includes('```improved-prompt')}
+                <div class="analysis-apply-bar">
+                  <button class="btn-sm btn-primary" on:click={() => applyAnalysisSuggestion(message.content)}>
+                    Apply Suggested Prompt
+                  </button>
+                </div>
+              {/if}
             {:else}
               {message.content}
             {/if}
@@ -1960,5 +2111,119 @@
   .send-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  /* Transcript analyze button */
+  .transcript-stat-item-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .transcript-stat-item-wrapper .transcript-stat-item {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .btn-analyze {
+    font-size: 0.72rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+    padding: 0.25rem 0.5rem;
+    background: #1f3a5f;
+    border-color: #388bfd;
+    color: #79c0ff;
+  }
+
+  .btn-analyze:hover {
+    background: #1a4a7a;
+  }
+
+  .btn-analyze:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Override badge */
+  .template-override-badge {
+    font-size: 0.65rem;
+    opacity: 0.7;
+    background: #1f3a5f;
+    color: #79c0ff;
+    padding: 0.05rem 0.25rem;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  /* Version history panel */
+  .version-history {
+    padding: 0.6rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    overflow-y: auto;
+    min-height: 0;
+  }
+
+  .version-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .version-item {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 0.4rem 0.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .version-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .version-number {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #79c0ff;
+  }
+
+  .version-date {
+    font-size: 0.7rem;
+    opacity: 0.5;
+  }
+
+  .version-note {
+    font-size: 0.72rem;
+    opacity: 0.7;
+    font-style: italic;
+  }
+
+  .version-prompt {
+    margin: 0;
+    padding: 0.3rem 0.4rem;
+    background: #0d1117;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #c9d1d9;
+    max-height: 80px;
+    overflow-y: auto;
+  }
+
+  /* Analysis apply bar */
+  .analysis-apply-bar {
+    margin-top: 0.5rem;
+    padding-top: 0.4rem;
+    border-top: 1px solid #30363d;
+    display: flex;
+    justify-content: flex-end;
   }
 </style>
