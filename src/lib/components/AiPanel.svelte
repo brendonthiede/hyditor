@@ -20,8 +20,11 @@
     deleteSession,
     addCustomTemplate,
     updateCustomTemplate,
-    deleteCustomTemplate
+    deleteCustomTemplate,
+    setPendingTemplateUsage,
+    getTemplateStats,
   } from '$lib/stores/ai';
+  import type { TemplateStats, TranscriptEntry } from '$lib/utils/aiTranscripts';
   import { parseMessageSegments, type FileEdit } from '$lib/utils/aiEdits';
   import { applyPlaceholders, extractPostMetadata, type ChatTemplate, type TemplatePlaceholder } from '$lib/utils/aiTemplates';
   import { computeLineDiff, type DiffResult } from '$lib/utils/diff';
@@ -57,6 +60,10 @@
   let editTemplateName = '';
   let editTemplateDescription = '';
   let editTemplatePrompt = '';
+  let showTranscripts = false;
+  let transcriptStats: TemplateStats[] = [];
+  let expandedTemplateId: string | null = null;
+  let expandedTranscriptEntry: TranscriptEntry | null = null;
 
   $: isLoading = $aiState.status === 'loading';
 
@@ -201,11 +208,40 @@
 
   function applyTemplate(): void {
     if (!selectedTemplate) return;
-    inputText = applyPlaceholders(selectedTemplate.prompt, templateValues);
+    const promptText = applyPlaceholders(selectedTemplate.prompt, templateValues);
+    inputText = promptText;
+    setPendingTemplateUsage(
+      selectedTemplate.id,
+      selectedTemplate.name,
+      { ...templateValues },
+      promptText,
+    );
     selectedTemplate = null;
     templateValues = {};
     fieldSuggestions = {};
     showTemplates = false;
+  }
+
+  function toggleTranscripts(): void {
+    showTranscripts = !showTranscripts;
+    if (showTranscripts) {
+      transcriptStats = getTemplateStats();
+      expandedTemplateId = null;
+      expandedTranscriptEntry = null;
+    }
+  }
+
+  function toggleExpandTemplate(templateId: string): void {
+    expandedTemplateId = expandedTemplateId === templateId ? null : templateId;
+    expandedTranscriptEntry = null;
+  }
+
+  function viewTranscriptEntry(entry: TranscriptEntry): void {
+    expandedTranscriptEntry = expandedTranscriptEntry === entry ? null : entry;
+  }
+
+  function formatFollowUps(n: number): string {
+    return n === 1 ? '1 follow-up' : `${n} follow-ups`;
   }
 
   function cancelTemplate(): void {
@@ -425,6 +461,14 @@
       </button>
       <button
         class="ai-icon-btn"
+        class:active={showTranscripts}
+        title="Template transcripts"
+        on:click={toggleTranscripts}
+      >
+        📊
+      </button>
+      <button
+        class="ai-icon-btn"
         class:active={showHistory}
         title="Chat history"
         on:click={() => (showHistory = !showHistory)}
@@ -525,6 +569,92 @@
                 >×</button>
               </span>
             </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {/if}
+
+  <!-- Template transcripts -->
+  {#if showTranscripts}
+    <div class="transcript-panel">
+      {#if transcriptStats.length === 0}
+        <p class="transcript-empty">No template usage recorded yet. Use a template to start tracking.</p>
+      {:else if expandedTranscriptEntry}
+        <div class="transcript-detail">
+          <button class="transcript-back" on:click={() => (expandedTranscriptEntry = null)}>← Back</button>
+          <div class="transcript-detail-header">
+            <span class="transcript-detail-name">{expandedTranscriptEntry.templateName}</span>
+            <span class="transcript-detail-date">{formatDate(expandedTranscriptEntry.createdAt)}</span>
+          </div>
+          <div class="transcript-detail-meta">
+            <span class="transcript-follow-ups">{formatFollowUps(expandedTranscriptEntry.followUpCount)}</span>
+            <span class="transcript-exchanges">{expandedTranscriptEntry.totalExchanges} messages</span>
+          </div>
+          {#if Object.keys(expandedTranscriptEntry.placeholderValues).length > 0}
+            <div class="transcript-placeholders">
+              <span class="transcript-section-label">Field values:</span>
+              {#each Object.entries(expandedTranscriptEntry.placeholderValues) as [key, value]}
+                <div class="transcript-placeholder-item">
+                  <span class="transcript-placeholder-key">{key}:</span>
+                  <span class="transcript-placeholder-value">{value || '(empty)'}</span>
+                </div>
+              {/each}
+            </div>
+          {/if}
+          <div class="transcript-prompt-section">
+            <span class="transcript-section-label">Generated prompt:</span>
+            <pre class="transcript-prompt-text">{expandedTranscriptEntry.promptText}</pre>
+          </div>
+        </div>
+      {:else if expandedTemplateId}
+        {@const stat = transcriptStats.find(s => s.templateId === expandedTemplateId)}
+        {#if stat}
+          <div class="transcript-entries">
+            <button class="transcript-back" on:click={() => (expandedTemplateId = null)}>← Back</button>
+            <div class="transcript-entries-header">
+              <span class="transcript-entries-name">{stat.templateName}</span>
+              <span class="transcript-entries-count">{stat.usageCount} uses</span>
+            </div>
+            <div class="transcript-entries-list">
+              {#each stat.entries as entry}
+                <button
+                  class="transcript-entry-item"
+                  on:click={() => viewTranscriptEntry(entry)}
+                  title="View details"
+                >
+                  <span class="transcript-entry-title">{entry.sessionTitle}</span>
+                  <span class="transcript-entry-meta">
+                    <span class="transcript-entry-follow-ups"
+                      class:high-follow-ups={entry.followUpCount >= 3}
+                      class:mid-follow-ups={entry.followUpCount >= 1 && entry.followUpCount < 3}
+                      class:low-follow-ups={entry.followUpCount === 0}
+                    >{formatFollowUps(entry.followUpCount)}</span>
+                    <span class="transcript-entry-date">{formatDate(entry.createdAt)}</span>
+                  </span>
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/if}
+      {:else}
+        <div class="transcript-stats-list">
+          {#each transcriptStats as stat (stat.templateId)}
+            <button
+              class="transcript-stat-item"
+              on:click={() => toggleExpandTemplate(stat.templateId)}
+              title="View usage details"
+            >
+              <div class="transcript-stat-header">
+                <span class="transcript-stat-name">{stat.templateName}</span>
+                <span class="transcript-stat-count">{stat.usageCount} uses</span>
+              </div>
+              <div class="transcript-stat-metrics">
+                <span class="transcript-metric">Avg follow-ups: <strong>{stat.avgFollowUps.toFixed(1)}</strong></span>
+                <span class="transcript-metric">Min: {stat.minFollowUps}</span>
+                <span class="transcript-metric">Max: {stat.maxFollowUps}</span>
+              </div>
+            </button>
           {/each}
         </div>
       {/if}
@@ -1199,6 +1329,258 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+  }
+
+  /* Transcript panel */
+  .transcript-panel {
+    border-bottom: 1px solid #30363d;
+    max-height: 280px;
+    overflow-y: auto;
+    flex-shrink: 0;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .transcript-empty {
+    margin: 0;
+    font-size: 0.8rem;
+    opacity: 0.6;
+    text-align: center;
+    padding: 0.5rem 0;
+  }
+
+  .transcript-back {
+    background: transparent;
+    border: none;
+    color: #79c0ff;
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0;
+    margin-bottom: 0.4rem;
+  }
+
+  .transcript-back:hover {
+    text-decoration: underline;
+  }
+
+  .transcript-stats-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .transcript-stat-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.4rem 0.6rem;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    cursor: pointer;
+    text-align: left;
+    color: #c9d1d9;
+    width: 100%;
+  }
+
+  .transcript-stat-item:hover {
+    border-color: #388bfd;
+  }
+
+  .transcript-stat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .transcript-stat-name {
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+
+  .transcript-stat-count {
+    font-size: 0.72rem;
+    opacity: 0.6;
+  }
+
+  .transcript-stat-metrics {
+    display: flex;
+    gap: 0.6rem;
+    font-size: 0.72rem;
+    opacity: 0.75;
+  }
+
+  .transcript-metric strong {
+    color: #79c0ff;
+  }
+
+  .transcript-entries-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.35rem;
+  }
+
+  .transcript-entries-name {
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+
+  .transcript-entries-count {
+    font-size: 0.72rem;
+    opacity: 0.6;
+  }
+
+  .transcript-entries-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .transcript-entry-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.3rem 0.5rem;
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 4px;
+    cursor: pointer;
+    color: #c9d1d9;
+    font-size: 0.78rem;
+    text-align: left;
+    width: 100%;
+    gap: 0.5rem;
+  }
+
+  .transcript-entry-item:hover {
+    border-color: #30363d;
+    background: #1c2128;
+  }
+
+  .transcript-entry-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .transcript-entry-meta {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .transcript-entry-follow-ups {
+    font-size: 0.7rem;
+    padding: 0.05rem 0.3rem;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+
+  .high-follow-ups {
+    background: rgba(248, 81, 73, 0.15);
+    color: #f85149;
+  }
+
+  .mid-follow-ups {
+    background: rgba(210, 153, 34, 0.15);
+    color: #d29922;
+  }
+
+  .low-follow-ups {
+    background: rgba(63, 185, 80, 0.15);
+    color: #3fb950;
+  }
+
+  .transcript-entry-date {
+    font-size: 0.68rem;
+    opacity: 0.5;
+  }
+
+  .transcript-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .transcript-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .transcript-detail-name {
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+
+  .transcript-detail-date {
+    font-size: 0.72rem;
+    opacity: 0.5;
+  }
+
+  .transcript-detail-meta {
+    display: flex;
+    gap: 0.6rem;
+    font-size: 0.75rem;
+    opacity: 0.8;
+  }
+
+  .transcript-follow-ups {
+    color: #79c0ff;
+  }
+
+  .transcript-exchanges {
+    opacity: 0.6;
+  }
+
+  .transcript-section-label {
+    font-size: 0.72rem;
+    opacity: 0.6;
+    display: block;
+    margin-bottom: 0.15rem;
+  }
+
+  .transcript-placeholders {
+    background: #161b22;
+    border-radius: 4px;
+    padding: 0.35rem 0.5rem;
+  }
+
+  .transcript-placeholder-item {
+    font-size: 0.75rem;
+    display: flex;
+    gap: 0.3rem;
+  }
+
+  .transcript-placeholder-key {
+    color: #79c0ff;
+    font-weight: 500;
+    flex-shrink: 0;
+  }
+
+  .transcript-placeholder-value {
+    opacity: 0.85;
+    word-break: break-word;
+  }
+
+  .transcript-prompt-section {
+    max-height: 120px;
+    overflow-y: auto;
+  }
+
+  .transcript-prompt-text {
+    margin: 0;
+    padding: 0.35rem 0.5rem;
+    background: #161b22;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #c9d1d9;
   }
 
   .ai-placeholder {

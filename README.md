@@ -273,6 +273,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ Diff view for changed files: clicking a file in the Git (Publish) panel opens a side-by-side diff view using CodeMirror's merge extension; the left panel shows the HEAD (original) content as read-only and the right panel shows the working copy as editable; additions are highlighted in green and deletions in red; edits auto-save with the same debounce logic as the regular editor; a close button returns to the normal editor; switching files via the file tree automatically exits diff mode; the `git_file_head_content` Rust command retrieves the HEAD version of any file (returns empty string for untracked/new files)
 - ✅ Windows `wdm` gem workaround: when `bundle install` fails because the `wdm` 0.1.x native extension cannot compile (common with Ruby 3.2+), `bundle install` is automatically retried with `BUNDLE_FORCE_RUBY_PLATFORM=1` to skip the platform-conditional gem; Jekyll falls back to polling for file changes, which works fine for preview
 - ✅ Auto-pull on repo open: when a repo is loaded (either from the repo selector or session restore), Hyditor automatically fetches from origin and fast-forward merges the current branch; if the remote has diverged (non-fast-forward), the error is shown in the Publish panel with a dismissible message advising the user to resolve with a full Git client; auth-expired errors still redirect to sign-in; the pull is non-blocking — the repo always opens even if pulling fails
+- ✅ AI template transcripts: when a chat is started from a prompt template, the template ID, name, placeholder values, and generated prompt are recorded on the session; the 📊 button in the AI header opens the transcript viewer showing per-template aggregate statistics (usage count, average/min/max follow-up prompts) and drill-down into individual transcript entries with placeholder values and generated prompts — helps identify templates that need better instructions or additional fields by tracking how many follow-up prompts are needed to reach the desired result
 ## Contributor Workflow
 
 - README updates are required as part of "done" for every completed feature, architecture change, or workflow change.
@@ -371,3 +372,4 @@ For in-app UI use (e.g. the auth screen), place SVG or PNG assets under `src/lib
 ## Next Work
 
 - Improve Publish panel error visibility so transient revert/publish failures are not cleared too quickly by background status refresh.
+- Export/import transcript data for offline analysis of template effectiveness across repos.

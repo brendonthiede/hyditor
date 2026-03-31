@@ -18,6 +18,11 @@ import {
   persistCustomTemplates,
   getAllTemplates,
 } from '$lib/utils/aiTemplates';
+import {
+  type TemplateUsage,
+  computeTranscriptEntries,
+  computeTemplateStats,
+} from '$lib/utils/aiTranscripts';
 
 export type AiStatus = 'idle' | 'loading' | 'streaming' | 'error';
 
@@ -29,6 +34,8 @@ export interface ChatSession {
   messages: ChatMessage[];
   createdAt: number;
   updatedAt: number;
+  /** Template usages recorded during this session (for transcript analysis). */
+  templateUsages?: TemplateUsage[];
 }
 
 const SESSIONS_STORAGE_KEY = 'hyditor-ai-sessions';
@@ -82,6 +89,8 @@ export interface AiState {
   templates: ChatTemplate[];
   /** Custom templates only (for persistence) */
   customTemplates: ChatTemplate[];
+  /** Template usage pending attachment to next sent message. */
+  pendingTemplateUsage: Omit<TemplateUsage, 'messageIndex' | 'timestamp'> | null;
 }
 
 const DEFAULTS: AiState = {
@@ -98,6 +107,7 @@ const DEFAULTS: AiState = {
   promptHistory: [],
   templates: [...BUILT_IN_TEMPLATES],
   customTemplates: [],
+  pendingTemplateUsage: null,
 };
 
 /** Extract deduplicated user prompts from sessions, newest-first. */
@@ -160,6 +170,28 @@ function saveActiveSession(): void {
     };
     sessions.unshift(newSession);
     aiState.update((s) => ({ ...s, activeSessionId: newSession.id }));
+  }
+
+  // Attach any pending template usage to the active session
+  if (state.pendingTemplateUsage) {
+    const sessionIdx = sessions.findIndex(
+      (s) => s.id === (state.activeSessionId ?? sessions[0]?.id),
+    );
+    if (sessionIdx >= 0) {
+      const session = sessions[sessionIdx];
+      // The template prompt is the most recent user message before the last model reply
+      const msgIdx = state.messages.length >= 2 ? state.messages.length - 2 : 0;
+      const usage: TemplateUsage = {
+        ...state.pendingTemplateUsage,
+        messageIndex: msgIdx,
+        timestamp: now,
+      };
+      sessions[sessionIdx] = {
+        ...session,
+        templateUsages: [...(session.templateUsages ?? []), usage],
+      };
+    }
+    aiState.update((s) => ({ ...s, pendingTemplateUsage: null }));
   }
 
   persistSessions(sessions);
@@ -293,6 +325,35 @@ export function deleteCustomTemplate(id: string): void {
     persistCustomTemplates(customTemplates);
     return { ...s, customTemplates, templates: getAllTemplates(customTemplates) };
   });
+}
+
+// ── Template transcript tracking ────────────────────────────────────
+
+/**
+ * Record that a template was just applied. The usage will be attached to
+ * the session when the next message is sent and the session is saved.
+ */
+export function setPendingTemplateUsage(
+  templateId: string,
+  templateName: string,
+  placeholderValues: Record<string, string>,
+  promptText: string,
+): void {
+  aiState.update((s) => ({
+    ...s,
+    pendingTemplateUsage: { templateId, templateName, placeholderValues, promptText },
+  }));
+}
+
+/** Get transcript entries for all sessions that used templates. */
+export function getTranscriptEntries() {
+  const state = get(aiState);
+  return computeTranscriptEntries(state.sessions);
+}
+
+/** Get per-template aggregate statistics from transcripts. */
+export function getTemplateStats() {
+  return computeTemplateStats(getTranscriptEntries());
 }
 
 export async function changeModel(model: string): Promise<void> {
