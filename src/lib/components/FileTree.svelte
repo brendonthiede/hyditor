@@ -14,12 +14,15 @@
     'vendor',
     '.bundle',
     '_site',
+    '_data',
     '.sass-cache',
     '.jekyll-cache',
     '.jekyll-metadata',
     '_includes',
     '_layouts',
-    '_sass'
+    '_sass',
+    'Gemfile',
+    'Gemfile.lock'
   ]);
 
   /** Subdirectory names under `assets/` that are hidden in Jekyll-relevant mode. */
@@ -168,6 +171,11 @@
       // Remove Jekyll-irrelevant top-level entries (whole subtrees already
       // excluded by checking the first path segment).
       filtered = filtered.filter((item) => !JEKYLL_IGNORED_NAMES.has(topLevelName(item.path)));
+      // Hide dotfiles and dotfolders (names starting with '.').
+      filtered = filtered.filter((item) => {
+        const name = item.path.split('/').pop() ?? '';
+        return !name.startsWith('.');
+      });
       // Hide assets/js, assets/css, assets/scss subdirectories (but keep
       // other assets content like images visible).
       filtered = filtered.filter((item) => !isAssetsHiddenSubdir(item.path));
