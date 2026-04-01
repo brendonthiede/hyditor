@@ -430,7 +430,66 @@ fn bundle_install(repo_path: &Path) -> Result<(), String> {
     )))
 }
 
+/// If the repo contains a `.ruby-version` file and `rbenv` is on PATH,
+/// attempt to install the required Ruby version automatically.  Uses
+/// `rbenv install --skip-existing` so it's a no-op when the version is
+/// already present.  Errors are logged but not propagated — a missing
+/// Ruby version will surface later as a clearer bundle/jekyll error.
+fn ensure_rbenv_ruby_version(repo_path: &Path) {
+    let version_file = repo_path.join(".ruby-version");
+    let version = match fs::read_to_string(&version_file) {
+        Ok(v) => v.trim().to_string(),
+        Err(_) => return, // no .ruby-version — nothing to do
+    };
+
+    if version.is_empty() {
+        return;
+    }
+
+    if !shell_command_exists("rbenv") {
+        log_preview(&format!(
+            "repo requires Ruby {version} (.ruby-version) but rbenv is not on PATH; skipping auto-install"
+        ));
+        return;
+    }
+
+    log_preview(&format!(
+        "repo requires Ruby {version} (.ruby-version); ensuring it is installed via rbenv"
+    ));
+
+    let install_cmd = format!("rbenv install --skip-existing {}", shell_quote(&version));
+    match shell_command(&install_cmd)
+        .current_dir(repo_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+    {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            for line in stdout.lines().chain(stderr.lines()) {
+                if !line.trim().is_empty() {
+                    log_preview(&format!("[rbenv install] {line}"));
+                }
+            }
+            if output.status.success() {
+                log_preview(&format!("rbenv: Ruby {version} is ready"));
+            } else {
+                log_preview(&format!(
+                    "rbenv install exited with {}; Jekyll may fail if this Ruby version is required",
+                    output.status
+                ));
+            }
+        }
+        Err(err) => {
+            log_preview(&format!("failed to run rbenv install: {err}"));
+        }
+    }
+}
+
 fn start_jekyll_process(repo_path: &Path, port: u16, livereload_enabled: bool) -> Result<StartedJekyll, String> {
+    ensure_rbenv_ruby_version(repo_path);
+
     let gemfile_exists = repo_path.join("Gemfile").exists();
     let has_bundle = shell_command_exists("bundle");
     let use_bundle = gemfile_exists && has_bundle;
@@ -717,5 +776,19 @@ mod tests {
     #[test]
     fn temp_config_dir_name_constant_is_stable() {
         assert_eq!(PREVIEW_TEMP_CONFIG_DIR_NAME, "preview-config");
+    }
+
+    #[test]
+    fn ensure_rbenv_skips_when_no_version_file() {
+        let temp = tempfile::tempdir().expect("temp dir should create");
+        // Should not panic or error — just a no-op.
+        ensure_rbenv_ruby_version(temp.path());
+    }
+
+    #[test]
+    fn ensure_rbenv_skips_when_version_file_empty() {
+        let temp = tempfile::tempdir().expect("temp dir should create");
+        std::fs::write(temp.path().join(".ruby-version"), "  \n").expect("write");
+        ensure_rbenv_ruby_version(temp.path());
     }
 }

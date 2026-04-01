@@ -93,6 +93,8 @@ To use a different client ID for local development without changing the committe
 
 Hyditor's **Full Preview** mode runs Jekyll locally to render your site. Ruby, Bundler, and Jekyll must be installed and available in your shell. If they are missing, the preview panel will show an error with a link to the setup guide.
 
+If the repository contains a `.ruby-version` file and `rbenv` is on PATH, Hyditor will automatically run `rbenv install --skip-existing` for the required version before starting Jekyll.
+
 If Full Preview fails in an installed app build, inspect the persistent preview log:
 
 - Windows: `%LOCALAPPDATA%\\hyditor\\logs\\preview.log`
@@ -263,6 +265,7 @@ When the auth screen shows a verification link, **do not click it** — the devi
 - ✅ Full Preview livereload fallback: if Jekyll fails to become ready with `--livereload` (notably on some Windows Ruby/gem setups), Hyditor automatically retries without livereload and still starts preview; when running in no-livereload fallback mode, the preview iframe auto-refreshes after each successful file save
 - ✅ Windows no-livereload preview freshness: fallback iframe refresh now waits briefly after each successful save so Jekyll has time to finish rebuilding before reload; this fixes the one-edit-behind behavior where the preview showed the previous edit
 - ✅ Preview toolbar manual refresh: the preview panel now includes a `↻` refresh button to force an immediate reload of Full Preview without waiting for autosave-triggered refresh timing
+- ✅ Automatic rbenv Ruby install: when starting Full Preview, if the repo contains a `.ruby-version` file and `rbenv` is on PATH, Hyditor automatically runs `rbenv install --skip-existing <version>` to ensure the required Ruby version is available before launching Jekyll
 - ✅ Single Publish action: `git_publish` backend command stages eligible files → commits → pushes in one atomic IPC call; the GitPanel "Publish" button uses an auto-generated commit message (`"Changes made using Hyditor on M/D/YYYY"`) when no change notes are provided; if push fails after a successful commit the error includes the commit hash for recovery
 - ✅ Dead code cleanup: removed `git_unstage` Rust command, `unstage`/`stage`/`commit`/`push` Tauri wrappers (superseded by atomic `git_publish`), `stageFiles`/`unstageFiles`/`commitChanges`/`pushChanges` dead store functions; folded `branchUiState` into `branchState` to eliminate the separate store
 - ✅ Pinned panel headers: the left sidebar (Files/Search/Publish) uses a flex column layout so the blade tab selector, filter inputs, and search input remain fixed at the top while long file lists and search results scroll independently; the Publish panel pins its header and publish controls at the top/bottom with only the changed-files list scrolling
